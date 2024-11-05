@@ -1,0 +1,46 @@
+( 16-bit trig functions)
+
+( BLOCK X)
+( Trig LUT routines - with sine*10000 table)
+DECIMAL
+
+CREATE SINTABLE   
+0     ,  175 ,  349 ,  523 ,  698 ,  872 , 1045 , 1219 , 1392 , 
+1564  , 1736 , 1908 , 2079 , 2250 , 2419 , 2588 , 2756 , 2924 , 
+3090  , 3256 , 3420 , 3584 , 3746 , 3907 , 4067 , 4226 , 4384 , 
+4540  , 4695 , 4848 , 5000 , 5150 , 5299 , 5446 , 5592 , 5736 , 
+5878  , 6018 , 6157 , 6293 , 6428 , 6561 , 6691 , 6820 , 6947 , 
+7071  , 7193 , 7314 , 7431 , 7547 , 7660 , 7771 , 7880 , 7986 , 
+8090  , 8192 , 8290 , 8387 , 8480 , 8572 , 8660 , 8746 , 8829 , 
+8910  , 8988 , 9063 , 9135 , 9205 , 9272 , 9336 , 9397 , 9455 , 
+9511  , 9563 , 9613 , 9659 , 9703 , 9744 , 9781 , 9816 , 9848 , 
+9877  , 9903 , 9925 , 9945 , 9962 , 9976 , 9986 , 9994 , 9998 , 
+10000 , 
+
+
+: S180  ( degrees -- sine*10000  | Sine of 0-180)
+   DUP 90 > ( 91-180 degrees?)
+   IF 180 SWAP - THEN ( reflect) SINTABLE SWAP 1 CELLS * + @ ;
+
+( BLOCK X+1)
+( Trig lookup routines)
+
+: SIN  ( degrees -- sine*10000)
+   360 MOD ( doesn't change sine value)
+   DUP 0< IF 360 + THEN ( handle negative argument)
+   DUP 180 > 
+   IF ( 181-359 degrees)
+     180 - S180 NEGATE 
+   ELSE S180 THEN ;
+
+: COS  ( degrees -- cosine*10000) 
+   360 MOD 90 + SIN ;
+
+( BLOCK X+2)
+( Example of use of the trig LUT routines)
+: PLOT  ( ARG --  | Print a line of asterisks)
+   CR ( arg) 0 DO 42 EMIT ( '*') LOOP ;
+
+: WAVE  ( --   | Plot a sine wave)
+   360 0 DO I SIN 300 / 40 + ( scale it) PLOT 5 +LOOP ( plot every 5th deg) CR ;
+

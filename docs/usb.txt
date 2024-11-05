@@ -1,0 +1,125 @@
+Recommended reading: "Benjamin David Lunt: USB: The Universal Serial Bus" (I bought the 1st edition, a long time ago)
+With this book I have managed to write the EHCI driver from scratch in assembly in a month.
+
+This OS doesn't use the mouse (it's best to unplug it).
+Currently external HUBs are not supported.
+There is no USB-keyboard driver.
+
+*************************************
+USB 2. 0 (EHCI 1.0)	[see XHCI below, after EHCI]
+
+In Forth-Memory-Map(FMM) (in forth/common.asm) there is 0x30000 bytes space for the USB-stack.
+USBEnum uses a small amount of this memory (< 1kb) and a Transfer Descriptor(TD) is 64-bytes.
+A TD can transfer maximum 0x5000 bytes.
+So in FMM there is about 190kb for the TDs. 192kb/64bytes is about 3040 TDs, so there is space for 3040 TDs in the allocated memory.
+By multiplying the number of TDs with 0x5000 we get about 60Mb. So maximum 60Mb file-chunk can be transferred at a time.
+
+We read files from the usb-drive with ehci_read_msd.
+This function uses the following SCSI commands:
+-read10 (LBANum: 32bit; SectorsNum: 16bit) [can handle a 2048GB drive; can read 32MB at a time]
+-read12 (LBANum: 32bit; SectorsNum: 32bit) [can handle a 2048GB drive; can read 2048GB(!?) at a time]
+-read16 (LBANum: 64bit; SectorsNum: 32bit) [can handle a huge drive; can read 2048GB(!?) at a time]
+
+We use only 16bit sectorsnum in these functions, so if the file(the number of consecutive sectors) is greater than that, we read the file in cycles, maximum 65535 sectors at a time.
+65535*512 (max. num in 16bits * sectorsize) is about 32Mb, so the allocated memory in FMM will be enough.
+
+Speed: it takes about 3 seconds to read a 45MB file.
+
+*************************************
+An old Sony 4GB-pendrive of mine stalls with read12, but a Sony 16GB one works fine with it.
+It is recommended to use the newest command of the above mentioned SCSI commands, the drive can handle.
+In ehci_init_msd when we read the capacity of the drive, we set a variable according to its size.
+In ehci_read_msd we use this variable to decide which SCSI command to use.
+In case of problems (i.e. drive stalls), it's best to change ehci_msd_read to use read10 or read12 regardless of the size of the drive, whichever works.
+
+I haven't managed to test read16 so far.
+
+ZFOS-EHCI uses polling instead of interrupts.
+
+ZFOS-EHCI seems to work on real hardware (was tested with 4 computers: and old desktop and 3 laptops).
+It also works with Bochs and QEMU.
+
+*************************************
+A few pendrives of mine don't want to read more than 0x100 consecutive clusters at once:
+	mov WORD [usbfat32_max_clusters_num_per_word], 0x100
+in usb/fat32.asm
+In case of problems it(the 0x100) can be further decreased.
+*************************************
+
+Tested with the following pendrives:
+Sony(4Gb(2.0), 8GB(2.0), 16GB(2.0), 32Gb(2.1)), Toshiba(8GB, 2.0), Maxell(4Gb, 2.0), Kingston((8GB, 2.1), 16Gb(2.0)), SanDisk(16Gb, 2.1)
+
+The Toshiba, the Maxell, the Kingston(8, 16) and the SanDisk pendrives fail in case of resetting EndPoint1 and/or EndPoint2.
+See the function ehci_bulk_reset in ehci.asm. There, at the top of the function, instead of "jz .ResetE1" we have 
+"jz .Back" to avoid resetting EP1 and EP2. All the pendrives work this way, even the ones that didn't fail with resetting the EPs.
+The Sony(32), the Toshiba and the Kingston(16) pendrives work only with "mov WORD [usbfat32_max_clusters_num_per_word], 1" (see above).
+Otherwise there are error messages like "EHCI Inetrrupt wait timed out. Read10: Getting CSW failed."
+
+*************************************
+
+There is no USB-keyboard driver, however if we don't disable UHCI (or OHCI depending on which companion controller EHCI has on our computer) 
+in function usbdis_disable_interrupts in usb/usbdis.asm (called from kernel.asm), BIOS will get it working for us (makes it ps/2). 
+Note that the built-in keyboard will work even if we disable the companion controller (The EHCI can have either UHCI or OHCI controller 
+as its companion controller).
+
+*************************************
+How to use both EHCI and XHCI:
+PCIDETUSB will print the available USB-controllers on the current hardware (EHCI, XHCI).
+If only XHCI is available (or we want to use XHCI if both EHCI and XHCI is available), 
+then we will have to execute USBXHCI to switch to the XHCI-driver.
+
+*************************************
+How to use USB-EHCI:
+USBEHCI                  ( EHCI is the default driver, so no need to call USBEHCI, if USBXHCI was not called before)
+USBENUM .                ( in my case, returns 2 as device-address)
+2 USBFSINIT . . . . 
+FALSE USBFSLS .
+HEX
+1000000 USBFSREAD BIGF.TXT" . .
+1000000 100 DUMP
+
+***************************************************************
+XHCI
+***************************************************************
+The code works with the current version of the Bochs-Emulator ( September, 2024.). 
+It can successfully execute the USB-related words (see forth/usb.asm). 
+So, for example it can read files from the pendrive-image with Bochs-XHCI. 
+SuperSpeed devices!?
+It works on real hardware but it was only tested with one laptop: Dell Inspiron 5559.
+It doesn't work with QEMU.
+
+Note that currently only small-sized rings are used (xhci.asm):
+%define XHCI_CMND_RING_TRBS			1024  		; Command-ring (not more than 4096 in order to fit in 64KB)
+%define XHCI_TRBS_PER_RING			1024		; ring of Control-EndPoint
+%define XHCI_TRBS_PER_EVENT_RING	4096		; Event-ring (common)
+%define XHCI_TRBS_PER_BULK_RING		(4096*28)	; rings of BulkOut/BulkIn (4096 is the maximum for a 64KB-segment)
+
+The Debug-defines (at the top of xhci.asm) print the count of the number of TRBs in a given ring.
+For example XHCI_TRBS_PER_BULK_RING	is (4096*28), so both rings (BulkOut and BulkIn) have (4096*28) TRBs each.
+We can read at least a 45MB file with (4096*28).
+
+I have only one computer with XHCI, and that is my development computer.
+So, XHCI hasn't been thoroughly tested on real hardware.
+
+*************************************
+How to use USB-XHCI:
+USBXHCI									( activates the XHCI-driver. EHCI is the active by default)
+USBENUM .                               ( in my case, returns 2 as device-address)
+2 USBFSINIT . . . . 
+FALSE USBFSLS .
+HEX
+1000000 USBFSREAD BIGF.TXT" . .         ( size is 0xb5)
+1000000 100 DUMP
+
+1000000 b5 USBFSWRITE TEST.TXT" .
+
+***************************************
+For both EHCI and XHCI:
+If USBENUM prints more than one device, then after USBFSINIT we can use one of the devices.
+As soon as we are done with that device, we can execute USBFSINIT for another device and use that.
+
+On Linux:
+"lsusb -v" prints device descriptors
+"lsusb -t" prints ports
+
+

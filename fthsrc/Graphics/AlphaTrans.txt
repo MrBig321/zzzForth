@@ -1,0 +1,26 @@
+The standard blending equation is:
+
+out = alpha * new + (1 - alpha) * old
+
+Where out, new and old are RGB colors, and alpha is a floating point number in the range [0,1].
+
+So, you have (for red):
+
+240 = 0.1 * newR + 0.9 * 255
+
+Solving for newR, we get:
+
+newR = (240 - 0.9 * 255) / 0.1
+
+which evaluates to 105. Repeat for the other components, and you're done.
+
+
+*****The same but put it differently:
+opacity*original + (1-opacity)*background = resulting pixel
+
+original R = (resulting R - ((1-opacity)*background R)) / opacity.
+original G = (resulting G - ((1-opacity)*background G)) / opacity.
+original B = (resulting B - ((1-opacity)*background B)) / opacity.
+
+in which opacity is (alpha/100).
+

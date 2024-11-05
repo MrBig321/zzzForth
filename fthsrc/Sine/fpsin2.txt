@@ -1,0 +1,41 @@
+( 16-bit trig functions)
+
+( BLOCK X)
+DECIMAL
+31415 CONSTANT PI 
+10000 CONSTANT 10K ( The scaling constant)
+VARIABLE XS        ( The square of the scaled angle)
+
+( n1 n2 -- n3   | n3=10000-n1*x*x/n2 where x is the angle)
+: KN   XS @ SWAP / ( x*x/n2)
+   NEGATE 10K */ ( -n1*x*x/n2)
+   10K + ( 10000-n1*x*x/n2) ;
+
+: (SIN) ( x -- sine*10K, x in radian*10K)
+   DUP DUP 10K */ ( x*x scaled by 10K)
+   XS ! ( save it in XS)
+   10K 72 KN ( last term)
+   42 KN  20 KN  6 KN ( terms 3, 2 and 1)
+   10K */ ( times x) ;
+
+: (COS) ( x -- cosine*10K, x in radian*10K)
+   DUP 10K */ XS ! ( compute and save x*x)
+   10K 56 KN 30 KN 12 KN 2 KN ( serial expansion) ;
+
+: SIN  ( degree -- sine*10K)
+   PI 180 */ ( convert to radian)
+   (sin) ;
+
+: COS  ( degree -- cosine*10K)
+  PI 180 */ (COS) ;
+
+( HowTo:
+90 SIN . 9999
+45 SIN . 7070
+30 SIN . 5000
+0 SIN . 0
+90 COS . 0
+45 COS . 7071
+0 COS . 10000)
+
+

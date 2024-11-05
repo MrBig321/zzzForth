@@ -1,0 +1,13 @@
+( Random number generation -- High level )
+VARIABLE rnd   HERE rnd !
+: RANDOM  rnd @ 31421 *  6927 +  DUP rnd ! ;
+: CHOOSE  ( u1 -- u2 )  RANDOM UM*  NIP ;
+
+( How to use)
+( To choose a random number between zero and ten [but exclusive of ten])
+( simply enter)
+
+( 10 CHOOSE)
+
+( and CHOOSE will leave the random number on the stack.)
+

@@ -1,0 +1,11 @@
+To have 1024*768*16:
+1. in ZFOS/defs.asm activate NORMALRES_DEF (i.e. shouldn't be commented out)
+2. in the ZFOS folder the file with "16*24 Font-bitmap" needs to have the name "gfont.inc".
+3. rebuild
+
+To have 640*480*16:
+1. in ZFOS/defs.asm deactivate NORMALRES_DEF (i.e. comment it out)
+2. in the ZFOS folder the file with "10*15 Font-bitmap" needs to have the name "gfont.inc".
+3. rebuild
+
+

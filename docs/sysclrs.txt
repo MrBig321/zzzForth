@@ -1,0 +1,10 @@
+How To Change System-colors:
+
+63488 16 LSHIFT  ( red, 0xF800)
+2016 OR          ( green, 0x7E0)
+BKGFGCLR !       ( changes fg color to red and bkg clr to green)
+PAGE
+
+63488 16 LSHIFT CHBKGCURRCLR !  ( Changes the color of the cursor to red)
+
+

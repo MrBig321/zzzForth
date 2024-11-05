@@ -1,0 +1,45 @@
+( 16-bit trig functions)
+
+( Where can we use LSHIFT, RSHIFT here!? )
+
+( BLOCK X)
+DECIMAL
+
+: ISIN ;  ( marker for FORGET)
+
+16384 CONSTANT SCALE ( The scaling constant, 2^14)
+: UPSCALE ( n -- nUpscaled)
+   14 LSHIFT ;
+
+VARIABLE XS        ( The square of the scaled angle)
+
+( a b -- m   | m=SCALE-ax*x/b ... a common term in the series)
+: L   XS @ SWAP / NEGATE SCALE */ SCALE + ;  ( / can be RSHIFT !?)
+
+( theta -- SCALE*SIN )
+: (SIN)  DUP ( save x)  DUP SCALE */ XS ! ( save x*x)    ( / can be RSHIFT !?)
+   SCALE ( Put 1*SCALE on stack to start series)
+   72 L  42 L  20 L  6 L ( Compute the series terms)
+   SCALE */ ( Finaly multiply by the saved x) ;          (  / can be RSHIFT !?)
+( Note: 1/10000 of a radian is close to 0.0057 degree or about 21 arc seconds ... a very small angle)
+
+( BLOCK X+1)
+( SINE, COSINE and TANGENT for whole degree angles)
+
+( theta -- theta  | Reduce Y-axis symmetry. 0-180 to 0-90-0)
+: ?MIRROR  DUP 90 > IF 180 SWAP - THEN ;
+
+( theta [any] -- theta -90 to 90  | angle range reduction)
+: REDUCE  360 MOD DUP 0< IF 360 + THEN DUP 180 <
+   IF ( 0-180) ?MIRROR ELSE 180 - ?MIRROR NEGATE THEN ;
+
+( theta -- SCALE*SIN or COS  | Any angle in whole degrees)
+ : SIN  REDUCE 286 * ( deg. to rad*SCALE) (SIN) ;            ( PI/180 * SCALE is 285.xxx)
+: COS  360 MOD ( prevents possible overflow) 90 SWAP - SIN ;
+
+( theta -- 256*TAN   | TAN set to +-32768 for +-90 degrees)
+: TAN  DUP SIN SWAP COS ?DUP IF SCALE SWAP */ ELSE 2* THEN ;
+( ORIGINAL VERSION:)
+( : TAN  DUP SIN SWAP COS ?DUP IF 100 SWAP */ ELSE 3 * THEN ;)
+
+

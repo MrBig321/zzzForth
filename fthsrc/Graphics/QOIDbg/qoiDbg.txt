@@ -1,0 +1,436 @@
+: QOI ;  ( marker for FORGET)
+
+DECIMAL
+: WAITSPACE  BEGIN PAUSE KEY 32 = UNTIL DISCARD ;  ( !!!!!!!! TEST !!!!!)
+
+HEX 
+0  CONSTANT QOI_OP_INDEX  ( 00xxxxxx) 
+40 CONSTANT QOI_OP_DIFF   ( 01xxxxxx) 
+80 CONSTANT QOI_OP_LUMA   ( 10xxxxxx) 
+C0 CONSTANT QOI_OP_RUN    ( 11xxxxxx) 
+FE CONSTANT QOI_OP_RGB    ( 11111110) 
+FF CONSTANT QOI_OP_RGBA   ( 11111111) 
+
+C0 CONSTANT QOI_MASK_2    ( 11000000) 
+
+DECIMAL 
+
+: INDEX ( -- )   ( RT:) ( idx -- addr )
+  CREATE 64 CELLS ALLOT 
+  DOES> SWAP CELLS + ; 
+
+INDEX IDX
+
+: CLEARIDX  ( -- ) 0 IDX 64 CELLS ERASE ;
+
+: GETR ( addrRGBA -- R)
+   C@ ;
+
+: SETR ( R addrRGBA -- )
+   C! ;
+
+: ADDR ( v addrRGBA -- )
+   C+! ;
+
+: GETG ( addrRGBA -- G)
+   1+ C@ ;
+
+: SETG ( G addrRGBA -- )
+   1+ C! ;
+
+: ADDG ( v addrRGBA -- )
+   1+ C+! ;
+
+: GETB ( addrRGBA -- B)
+   2+ C@ ;
+
+: SETB ( B addrRGBA -- )
+   2+ C! ;
+
+: ADDB ( v addrRGBA -- )
+   2+ C+! ;
+
+: GETA ( addrRGBA -- A)
+   3 + C@ ;
+
+: SETA ( A addrRGBA -- )
+   3 + C! ;
+
+: ADDA ( v addrRGBA -- )
+   3 + C+! ;
+
+: WRITEBIGE  ( addr val -- addr+ ) 
+   2DUP [ HEX ] FF000000 [ DECIMAL ] AND 24 RSHIFT SWAP C! 
+   SWAP 1+ SWAP 
+   2DUP [ HEX ] FF0000 [ DECIMAL ] AND 16 RSHIFT SWAP C! 
+   SWAP 1+ SWAP 
+   2DUP [ HEX ] FF00 [ DECIMAL ] AND 8 RSHIFT SWAP C! 
+   SWAP 1+ SWAP 
+   2DUP [ HEX ] FF [ DECIMAL ] AND SWAP C! 
+   DROP  1+ ;
+
+: READBIGE  ( addr -- val )
+   DUP C@ 24 LSHIFT SWAP 1+ DUP C@ 16 LSHIFT SWAP 1+ DUP C@ 8 LSHIFT SWAP 1+ C@ OR OR OR ;
+
+: CLRHASH  ( addrRGBA -- hash )
+   DUP GETR 3 * SWAP DUP GETG 5 * SWAP DUP GETB 7 * SWAP GETA 11 * + + + ; 
+
+( EBYTES is the address of the encoded data; Original value)
+VARIABLE EBYTES  
+
+( 'qoif')
+113 24 LSHIFT 111 16 LSHIFT 105 8 LSHIFT 102 OR OR OR CONSTANT QOIMAGIC 
+
+: WRITEHDR  ( clrspace channel h w ebytes -- ebytes+ )
+   QOIMAGIC WRITEBIGE   ( addr+ )
+   SWAP WRITEBIGE       ( addr+ )
+   SWAP WRITEBIGE       ( addr+ )
+   DUP >R C! R> 1+      ( addr+ ) 
+   DUP >R C! R> 1+ ;    ( addr+ )
+
+VARIABLE CNTR     ( !!!!!!!! TEST !!!!!)
+1 CNTR !
+
+: CNTR?+
+  CNTR ? 1 CNTR +! ;
+
+VARIABLE RUN 
+VARIABLE PXPREV 
+VARIABLE PX 
+VARIABLE PXLEN 
+VARIABLE PXEND 
+VARIABLE CHANNELS 
+
+: CPY2PX  ( pixels -- pixels+2|pixels+3 )
+   DUP C@ PX SETR 1+ DUP C@ PX SETG 1+ DUP C@ PX SETB 1+ CHANNELS @ 4 = IF DUP C@ PX SETA 1+ THEN ; 
+
+: PXEQPXPREV?  ( -- flag )
+   PX @ PXPREV @ = ;
+
+17770 CONSTANT DBGLIM 
+( -1 CONSTANT DBGLIM)
+VARIABLE BCNT              ( !!!!!!!! TEST !!!!!)
+DECIMAL 14 BCNT ! 
+: BCNT+   ( -- )           ( !!!!!!!! TEST !!!!!)
+   1 BCNT +! ;
+
+: OPRUN  ( ebytes -- ebytes+ )
+    DUP QOI_OP_RUN RUN @ 1- OR 
+BCNT @ DBGLIM > IF ." QOI_OP_RUN bytes[]= " DUP . WAITSPACE THEN 
+    SWAP C! 1+ BCNT+ 0 RUN ! ;
+
+: PXEQPXPREV  ( ebytes loopI -- ebytes+ ) 
+     1 RUN +! 
+BCNT @ DBGLIM > IF CR BCNT ? ." px==pxprev " THEN
+     RUN @ BCNT @ DBGLIM > IF DUP ." run=" . WAITSPACE THEN 62 = SWAP PXEND @ = OR IF BCNT @ DBGLIM > IF DECIMAL CR BCNT ? ." (run==62) " THEN OPRUN THEN ;
+
+: CALCIDX  ( -- indexpos ) 
+    PX CLRHASH 64 MOD ;
+
+: IDXEQPX?  ( idx -- flag )
+    IDX @ PX @ = ;
+
+( StoreOpIdx)
+: STOPIDX  ( ebytes indexpos -- ebytes+ ) 
+   QOI_OP_INDEX OR BCNT @ DBGLIM > IF CR DECIMAL BCNT ? ." QOI_OP_INDEX bytes[]=" DUP . WAITSPACE THEN OVER C! 1+ BCNT+ ;
+
+: PX? ( -- )
+   ." px.r=" PX GETR . ." px.g=" PX GETG . ." px.b=" PX GETB . ." px.a=" PX GETA . ;
+
+: PXPREV? ( -- )
+   ." pxr.r=" PXPREV GETR . ." pxr.g=" PXPREV GETG . ." pxr.b=" PXPREV GETB . ." pxr.a=" PXPREV GETA . ;
+
+( StoreIDX)
+: STIDX  ( indexpos -- ) 
+BCNT @ DBGLIM > IF CR DECIMAL BCNT ? ." index[" DUP . ." ]= " PX? WAITSPACE THEN 
+   IDX PX @ SWAP ! ;
+
+: CHECKA ( -- flag )
+   PX GETA PXPREV GETA = ;
+
+( StoreRGBA)
+: STRGBA ( ebytes -- ebytes+ ) 
+BCNT @ DBGLIM > IF DECIMAL CR BCNT ? ." bytes[]= QOI_OP_RGBA " PX? WAITSPACE THEN
+   QOI_OP_RGBA OVER C! 1+ BCNT+ PX GETR OVER C! 1+ BCNT+ PX GETG OVER C! 1+ BCNT+ PX GETB OVER C! 1+ BCNT+ PX GETA OVER ! 1+ BCNT+ ;
+
+: 3DUP  ( a b c -- a b c a b c ) 
+   DUP 2OVER ROT ;
+
+( StoreDIFF)
+: STDIFF  ( ebytes vr vg vb -- ebytes+ )
+    2+ >R 2+ 2 LSHIFT >R 2+ 4 LSHIFT R> R> OR OR QOI_OP_DIFF OR BCNT @ DBGLIM > IF CR DECIMAL BCNT ? ." QOI_DIFF bytes[]=" DUP . WAITSPACE THEN OVER C! 1+ BCNT+ ;
+
+( StoreRGB)
+: STRGB ( ebytes -- ebytes+ ) 
+BCNT @ DBGLIM > IF CR DECIMAL BCNT ? ." bytes[]= QOI_OP_RGB " PX? WAITSPACE THEN
+   QOI_OP_RGB OVER C! 1+ BCNT+ PX GETR OVER C! 1+ BCNT+ PX GETG OVER C! 1+ BCNT+ PX GETB OVER C! 1+ BCNT+ ;
+
+: STLUMA ( ebytes vb-vg vr-vg vg -- ebytes+ ) 
+BCNT @ DBGLIM > IF >R CR DECIMAL BCNT ? ." QOI_OP_LUMA vg_r=" DUP . ." vg_b=" OVER . R> THEN
+    >R ROT DUP R> 32 + QOI_OP_LUMA OR BCNT @ DBGLIM > IF ." bytes[]=" DUP . THEN SWAP C! 1+ BCNT+  
+   ( vb-vg vr-vg ebytes+) 
+   >R 8 + 4 LSHIFT SWAP 8 + OR BCNT @ DBGLIM > IF ." bytes[+1]=" DUP . WAITSPACE THEN R@ C! R> 1+ BCNT+ ;
+
+: TOSIGNED ( u -- n )
+	DUP 0< IF DUP ABS 128 AND IF 256 + THEN ELSE DUP 0> IF DUP 128 AND IF 256 - THEN THEN THEN ; 
+
+: CALCV  ( -- vr vg vb )
+    PX GETR PXPREV GETR - TOSIGNED 
+    PX GETG PXPREV GETG - TOSIGNED 
+    PX GETB PXPREV GETB - TOSIGNED ; 
+
+: CHECKV   ( vr vg vb -- vr vg vb flag[vbChecked&vgChecked&vrChecked] )
+    3DUP  ( vr vg vb vr vg vb -- )
+    DUP -3 > SWAP 2 < AND >R   ( vr vg vb vr vg ) ( R: vbChecked)
+    DUP -3 > SWAP 2 < AND >R   ( vr vg vb vr )    ( R: vbChecked vgChecked)
+    DUP -3 > SWAP 2 < AND >R   ( vr vg vb )       ( R: vbChecked vgChecked vrChecked) 
+    2R> R> AND AND ;
+
+: CALCV2  ( vr vg vb -- vr-vg vg vb-vg )
+    >R DUP DUP 2>R - TOSIGNED      ( vr-vg )   ( R: vb vg vg) 
+    R>                             ( vr-vg vg) ( R: vb vg) 
+    2R>                            ( vr-vg vg vb vg) 
+    - TOSIGNED ;                   ( vr-vg vg vb-vg) 
+
+: CHECKV2  ( vr-vg vg vb-vg -- vb-vg vr-vg vg flag )
+    2DUP 2>R ROT DUP >R ( vg vb-vg vr-vg )   ( R: vg vb-vg vr-vg )
+    DUP -9 > SWAP 8 < AND 
+    ROT DUP -33 > SWAP 32 < AND 
+    ROT DUP -9 > SWAP 8 < AND  
+    AND AND           ( flag )   ( R: vg vb-vg vr-vg )
+    2R> ROT R> SWAP ; ( vb-vg vr-vg vg flag ) 
+
+: PADDING  ( ebytes -- ebytes+ )
+   7 0 DO DUP 0 SWAP C! 1+ LOOP DUP 1 SWAP C! 1+ ;
+
+( Calculates PXLEN, PXEND and stores CHANNELS)
+: CALCVARS  ( clrspace channels h w -- clrspace channels h w )
+   2DUP 2>R 2>R DUP DUP 2R> * * PXLEN ! 
+   CHANNELS ! 2R> 
+   PXLEN @ CHANNELS @ - PXEND ! ;
+
+( Inits RUN, PXREV, PX)
+: INITVARS  ( -- )
+   CLEARIDX 0 RUN ! 0 PXPREV ! 255 PXPREV SETA PXPREV @ PX ! ;
+
+: DOALPHA  ( ebytes -- ebytes+ )
+   CALCV         ( ebytes vr vg vb ) 
+BCNT @ DBGLIM > IF 3DUP CR DECIMAL BCNT ? ." px.rgba.a == px_prev.rgba.a vb= vg = vr= ... " . . . PXPREV? WAITSPACE THEN
+   CHECKV        ( ebytes vr vg vb flag ) 
+   IF STDIFF     ( ebytes+ ) 
+   ELSE 
+     CALCV2     ( ebytes vr-vg vg vb-vg )
+     CHECKV2    ( ebytes vb-vg vr-vg vg flag )
+     IF STLUMA  ( ebytes+ ) 
+     ELSE 2DROP DROP STRGB  ( ebytes+ ) 
+     THEN 
+   THEN ;
+
+( Add to index, OPDIFF, OPLUMA, StoreRGB, StoreRGBA) 
+: ADD2IDX  ( ebytes indexpos -- ebytes+ ) 
+   STIDX             ( ebytes ) 
+   CHECKA            ( ebytes flag ) 
+   IF DOALPHA        ( ebytes+ )
+   ELSE 
+     STRGBA          ( ebytes+ ) 
+   THEN ;
+
+: PXNOTEQPXPREV  ( ebytes -- ebytes+ )
+BCNT @ DBGLIM > IF CR DECIMAL BCNT ? ." PX!=PXPREV " WAITSPACE THEN 
+   RUN @ 0> 
+   IF BCNT @ DBGLIM > IF CR DECIMAL BCNT ? ." run>0 " THEN OPRUN 
+   THEN      ( ebytes+ )
+   CALCIDX             ( ebytes indexpos ) 
+BCNT @ DBGLIM > IF CR DECIMAL BCNT ? ." indexpos= " DUP . WAITSPACE THEN 
+   DUP IDXEQPX?         ( ebytes indexpos flag ) 
+   IF STOPIDX          ( ebytes+ ) 
+   ELSE 
+      ADD2IDX          ( ebytes+ )
+   THEN ;
+
+: MAGIC?  ( n -- )  
+    BSWAP4 SP@ 4 TYPE DROP ;  
+
+: QOIINFO  ( ebytes -- )
+    CR DUP READBIGE ." Magic: " MAGIC? CR 
+    CELL+ DUP READBIGE ." Width: " . CR
+    CELL+ DUP READBIGE ." Height: " . CR
+    CELL+ DUP C@ ." Channels: " . CR
+    1+ C@ ." Colorspace: " . CR ;
+
+( qoi encode)
+: QOIE  ( pixels clrspace channels h w ebytes -- len )	 
+CR ." ***ENCODING***"
+   DUP EBYTES !            ( pixels clrspace channels h w ebytes )
+   >R CALCVARS R>          ( pixels clrspace channels h w ebytes )
+   WRITEHDR                ( pixels ebytes+ ) 
+   INITVARS                ( pixels ebytes ) 
+( CR DECIMAL ." After INITVARS: " PX? )
+( for-loop)
+   PXLEN @ 0 DO 
+     SWAP CPY2PX SWAP      ( pixels+ ebytes ) 
+BCNT @ DBGLIM > IF CR DECIMAL BCNT ? PX? WAITSPACE THEN
+     PXEQPXPREV?           ( pixels ebytes flag ) 
+     IF I PXEQPXPREV       ( pixels ebytes )
+     ELSE PXNOTEQPXPREV    ( pixels ebytes+ )
+     THEN 
+     PX @ PXPREV !
+BCNT @ DBGLIM > IF CR DECIMAL BCNT ? ." [px_prev=px] " PX? WAITSPACE THEN
+   CHANNELS @ +LOOP        ( pixels ebytes )  
+   NIP                     ( ebytes )
+   PADDING                 ( ebytes+ )
+ 8 0 DO BCNT+ LOOP 
+   EBYTES @ - ;            ( len ) 
+
+14 CONSTANT QOIHDRSIZE
+8  CONSTANT QOIPADDINGSIZE
+VARIABLE CHUNKSLEN
+SCRW SCRH * CONSTANT SCRSIZE 
+
+: CHKSIZE ( size -- )
+   QOIHDRSIZE QOIPADDINGSIZE + < 
+   ABORT" QOI: invalid size!" ;
+
+: SAVESIZE  ( size -- )
+   QOIPADDINGSIZE - CHUNKSLEN ! ; 
+
+: READCHKHDR  ( ebytes -- ebytes+ channels w h ) 
+   DUP READBIGE              ( ebytes+ magic ) 
+   QOIMAGIC <> ABORT" QOI: invalid magic!"  
+   CELL+                     ( ebytes+ )
+   DUP READBIGE              ( ebytes w ) 
+   DUP 0= ABORT" QOI: width is zero!" 
+   >R CELL+                  ( ebytes+ )    ( R: w )
+   DUP READBIGE              ( ebytes h )   ( R: w )
+   DUP 0= ABORT" QOI: height is zero!" 
+   >R CELL+ 2R>              ( ebytes+ w h ) 
+   2DUP * SCRSIZE U>= ABORT" QOI: image too big!"  
+   2>R DUP C@ DUP CHANNELS ! ( ebytes channels )  ( R: w h )
+   DUP 4 > OVER 3 < OR ABORT" QOI: channels > 4 or < 3!" 
+   >R 1+                     ( ebytes+ )    ( R: w h channels )
+   DUP C@ 1 U> ABORT" QOI: colorspace > 1!" 
+   1+ R> 2R> ;               ( ebytes+ channels w h )
+
+: SAVEPXLEN  ( channels w h -- )
+   * * PXLEN ! ;
+
+: INITDVARS  ( -- )
+   CLEARIDX 0 RUN ! 0 PX ! 255 PX SETA ;
+
+( StoreToPX)
+: ST2PX  ( b ebytes -- ebytes+ )
+   DUP @ PX SETR 1+ DUP @ PX SETG 1+ DUP @ PX SETB 1+ SWAP QOI_OP_RGBA = 
+   IF DUP @ PX SETA 1+ THEN ;
+
+: DOINDEX  ( b -- )
+    IDX @ PX ! ;
+
+: DODIFF  ( b -- )
+    DUP 4 RSHIFT 3 AND 2- PX ADDR 
+    DUP 2 RSHIFT 3 AND 2- PX ADDG 
+    3 AND 2- PX ADDB ;
+
+: DOLUMA  ( ebytes b -- ebytes+ )
+    [ HEX ] 3F [ DECIMAL ] AND 32 - >R DUP C@ >R 1+ R> ( pixels ebytes+ b2 ) ( R: vg ) 
+    DUP 4 RSHIFT [ HEX ] 0F [ DECIMAL ] AND R@ 8 - + PX ADDR 
+    R@ PX ADDG 
+    [ HEX ] 0F [ DECIMAL ] AND R> 8 - + PX ADDB ;
+
+: DORUN  ( b -- )
+    [ HEX ] 3F [ DECIMAL ] AND RUN ! ;
+
+: STPX   ( pixels -- pixels+ )
+    DUP PX GETR SWAP C! 1+ DUP PX GETG SWAP C! 1+ DUP PX GETB SWAP C! 1+ ( pixels+)
+    CHANNELS @ 4 = 
+    IF DUP PX GETA SWAP C! 1+ 
+    THEN ;
+
+( qoi decode)  ( pixels is the addr of the decoded data, ebytes is the encoded data) 
+: QOID  ( pixels ebytes size -- )   ( channels !?)
+   DUP CHKSIZE               ( pixels ebytes size )
+   SAVESIZE                  ( pixels ebytes )
+   DUP EBYTES !
+   READCHKHDR			     ( pixels ebytes+ channels w h ) 
+   SAVEPXLEN                 ( pixels ebytes+ ) 
+   INITDVARS                 ( pixels ebytes ) 
+   PXLEN @ 0 DO 
+     RUN @ 0> 
+     IF -1 RUN +! 
+     ELSE 
+       DUP EBYTES @ - CHUNKSLEN <  ( pixels ebytes flag ) 
+       IF 
+         DUP C@ SWAP 1+ SWAP  ( pixels ebytes+ b )
+         DUP QOI_OP_RGB = OVER QOI_OP_RGBA = OR
+         IF                   ( pixels ebytes b )
+           SWAP ST2PX         ( pixels ebytes+ )
+         ELSE                 ( pixels ebytes b )
+           DUP QOI_MASK_2 AND 
+           CASE               ( 1 below is a dummy value for DROP)
+             QOI_OP_INDEX OF >R DOINDEX 1 R> ENDOF  ( pixels ebytes 1 )
+             QOI_OP_DIFF  OF >R DODIFF 1 R> ENDOF   ( pixels ebytes 1 )
+             QOI_OP_LUMA  OF >R DOLUMA 1 R> ENDOF   ( pixels ebytes+ 1 )
+             QOI_OP_RUN   OF >R DORUN 1 R> ENDOF    ( pixels ebytes 1 )
+           ENDCASE  ( ENDCASE drops the value from stack, that is why we transferred it to rstack temporarily)
+           DROP 
+         THEN
+         CALCIDX STIDX
+       THEN                   ( pixels ebytes )
+     THEN 
+     SWAP STPX SWAP         ( pixels+ ebytes )
+   CHANNELS @ +LOOP 
+   2DROP ; 
+
+( **********DISPLAY**********)
+
+( calculates visible width)
+( wi=x+w ; if [wi U>= SCRW] wi=SCRW-x)
+: CALCVISW ( x w -- visW)
+   2DUP + SCRW U>= IF SWAP NEGATE SCRW + THEN NIP ; 
+
+( calculates visible height)
+( he=y+h ; if [he U>= SCRH] he=SCRH-y)
+: CALCVISH ( y h -- visH)
+   2DUP + SCRH U>= IF SWAP NEGATE SCRH + THEN NIP ;
+
+( calculates memory-offset from x, y)
+( OffsInScrBuff = scrbuff+x*2+y*ROWBYTECNT)
+: CALCOFFS ( x y -- offsInScrBuff)
+   SCRW 2* * SCRBUFF + SWAP 2* + ; 
+   
+( calculates image parameters)
+: CALCIMGPARS  ( pixels x y w h -- offsInScrBuff pixels visibleWidth visibleHeight)
+   2OVER NIP SWAP CALCVISH >R ( pixels x y w)                   ( R: visH)
+   >R OVER R> CALCVISW >R     ( pixels x y)                     ( R: visH visW)
+   CALCOFFS SWAP R> R> ;      ( offsInScrBuff pixels visW visH) 
+   
+( draws a pixel  ; 24BPP to 16BPP 5:6:5)
+: DRAWPX24  ( offsInScrBuff pixels -- )  
+    DUP C@ 3 RSHIFT 11 LSHIFT >R DUP 1+ C@ 2 RSHIFT 5 LSHIFT >R 2+ C@ 3 RSHIFT R> R> OR OR SWAP W! ; 
+
+VARIABLE IMGALPHA
+VARIABLE IMGWIDTH 
+VARIABLE IMGNEXTROWOFFS 
+
+: DRAWIMGROW  ( offsInScrBuff pixels visW -- offsInScrBuff+ pixels+) 
+    0 DO 2DUP DRAWPX24 3 + IMGALPHA @ 0<> IF 1+ THEN SWAP 2+ SWAP LOOP ; 
+
+: TONEXTSCRROW  ( offsInScrBuff visW -- offsInScrBuffNR ) 
+   2* SCRW 2* SWAP - + ;
+
+: TONEXTIMGROW  ( pixels -- pixelsNR ) 
+   IMGNEXTROWOFFS @ ?DUP 0<> IF 3 * IMGALPHA @ 0<> IF IMGNEXTROWOFFS @ + THEN + THEN ; 
+
+: TONEXTROW ( offsInScrBuff pixels visW -- offsInScrBuffNR pixelsNR)
+   SWAP TONEXTIMGROW >R TONEXTSCRROW R> ; 
+
+( draws an image given in RGB or RGBA)
+( 1.drawpx24 2.scrbuff+2, pixels+3, 3.ifDepth=4[Alpha]:pixels+1)
+( 4.ifIdx>=visW:toNextRow)
+( NEGATIVE COORDS !?) ( Use U>, U>= !?)
+( CHECK IF X, Y GREATER THAN SCRW, SCRH !)
+: drawimg  ( pixels x y w h alpha -- ) 
+    IMGALPHA ! OVER IMGWIDTH ! CALCIMGPARS OVER IMGWIDTH @ SWAP - IMGNEXTROWOFFS !  ( offsInScrBuff pixels visibleWidth visibleHeight) 
+    0 DO DUP >R DRAWIMGROW R@ TONEXTROW R> LOOP DROP 2DROP ; 
+
+
+

@@ -1,0 +1,25 @@
+( Algorithm-author: Christophe Meessen 1993)
+( "2 SQRT 10000 65536 */ . " to see 1414... )
+
+( Computes 16.16 square-root of a 32-bit number; input is a positive number)
+: sqrt  ( u1 -- u2)
+   DUP 0= IF EXIT THEN 
+   HEX 40000000 DECIMAL 0 
+   ( r|u1 b q -- )
+   BEGIN 
+     2DUP 2>R +  ( r b+q)  ( R: b q)
+     2DUP  ( r b+q r b+q) >= IF 
+( r b+q) 
+        DUP ROT SWAP -  ( b+q r-[b+q] )  ( i.e. b+q r) 
+        SWAP DUP ( r b+q b+q)
+        R> DROP R@ + >R ( r b+q)   ( R: b q)
+     THEN 
+( r b+q)   ( R: b q)
+     DROP 1 LSHIFT 2R> >R 1 RSHIFT ( r b)  ( R: q)
+     DUP 0= ( r b flag) R> SWAP            ( r b q flag)
+   UNTIL 
+   NIP                          ( r q)
+   DUP ROT SWAP                 ( q r q)
+   > IF 1+ THEN ;
+
+

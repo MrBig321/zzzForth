@@ -1,0 +1,12 @@
+; By Dominic Szablewski
+
+int approx_sqrt(int v)
+{
+	int exp = v << ((4096 - v) >> 10);
+	int x = (v + (exp >> 3 )) >> 6;		//Initial guess
+	x = ((x+3) + v / (x+5)) >> 1;		//One round of Netwon's method
+
+	return x;
+}
+
+ 

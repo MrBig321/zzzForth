@@ -1,0 +1,299 @@
+( We dont use a rowbeg-array here as in txtedArr.txt)
+: TXTEDIT ;  ( marker for FORGET)
+
+DECIMAL
+
+: KEY? KEYW DISCARD DROP ; 
+
+9 CONSTANT KEYTAB
+8 CONSTANT KEYBCKSP
+15 CONSTANT KEYDEL
+10 CONSTANT KEYENTER
+28 CONSTANT KEYPGUP
+29 CONSTANT KEYPGDN
+22 CONSTANT KEYUP
+23 CONSTANT KEYDOWN
+24 CONSTANT KEYLEFT
+25 CONSTANT KEYRIGHT
+27 CONSTANT KEYESC
+30 CONSTANT KEYHOME
+31 CONSTANT KEYEND
+
+31 CONSTANT NROWS 
+64 CONSTANT NCOLS 
+
+VARIABLE MCURX 	( Saved cursor-position of the main-screen) ( 2VARIABLE !?)
+VARIABLE MCURY
+VARIABLE CURX 
+VARIABLE CURY
+
+: SAVEMCUR  ( -- )
+   GET-XY MCURY ! MCURX ! ;
+
+: RESTOREMCUR  ( -- )
+   MCURX @ MCURY @ AT-XY ;
+
+: SAVECUR  ( -- )
+   GET-XY CURY ! CURX ! ;
+
+: RESTORECUR  ( -- )
+   CURX @ CURY @ AT-XY ;
+
+: INITCURSOR  ( -- )
+   0 0 AT-XY ;
+
+: DOMSCR>  ( -- )
+   0 0 NCOLS NROWS MSCR> ;
+
+: DO>MSCR  ( -- )
+   >MSCR OSPARSON SCROLLON RESTOREMCUR ;
+
+: SHOWCTRLTEXT  ( -- )
+    3 NROWS AT-XY ." PGUP PGDN HOME END " 
+   22 NROWS AT-XY 127 EMIT  
+   24 NROWS AT-XY 128 EMIT  
+   26 NROWS AT-XY 129 EMIT  
+   28 NROWS AT-XY 130 EMIT  
+   43 NROWS AT-XY ." Press ESC to quit" ;
+
+: INITSCR  ( -- )
+   OSPARSOFF SCROLLOFF 
+   32 REMCUR SAVEMCUR PAGE  
+   SHOWCTRLTEXT 
+   DOMSCR> INITCURSOR ;
+
+: PRINTABLE? ( c -- flag )
+    DUP 32 >= SWAP 127 < AND ;
+
+VARIABLE CHBKGCLR
+
+: OPAON  ( -- )
+   1 OPAQUE ! CHBKGCURRCLR @ [ HEX ] FFFF AND CHBKGCLR ! BKGFGCLR @ FFFF AND CHBKGCURRCLR @ FFFF0000 AND OR CHBKGCURRCLR ! [ DECIMAL ] ;
+
+: OPAOFF  ( -- )
+   0 OPAQUE ! CHBKGCLR @ CHBKGCURRCLR @ [ HEX ] FFFF0000 AND OR CHBKGCURRCLR ! [ DECIMAL ] ;
+
+VARIABLE BADDR  ( Beginning address, i.e. address of the first byte of the file)
+VARIABLE LENGTH ( length of file)
+VARIABLE RCNT   ( row-count)
+VARIABLE ROFFS  ( byte-offset form BADDR of the first byte of the first row of the screen)
+VARIABLE RIDX   ( index of first row of the first row of the screen, e.g. RIDX=23 is the 23th row from BADDR)
+( ZZZFOS prints one space in case of a TAB. See _accept and gstdio_draw_char in assembly)
+( If we want to print several spaces in case of a TAB,) 
+( increase TABSIZE and update the code, i.e. the logic)
+( So the current code only works with TABSIZE=1)
+1 CONSTANT TABSIZE 
+VARIABLE STORE? 
+
+( calculate rows-count)
+: CRCNT  ( addr len -- #rows )
+   0 0 ROT  ( addr #rows #chars length ) 
+   FALSE STORE? !
+   0 DO 
+     ( addr #rows #chars )
+      STORE? @ IF FALSE STORE? ! DROP 1+ 0 THEN 
+      >R OVER C@ 10 = R> SWAP IF TRUE STORE? ! THEN 
+      >R OVER C@  9 = R> SWAP IF TABSIZE + DUP NCOLS >= IF TRUE STORE? ! THEN THEN 
+      >R OVER C@ PRINTABLE? R> SWAP IF 1+ DUP NCOLS = IF TRUE STORE? ! THEN THEN 
+      2>R 1+ 2R>  ( addr+ #rows #chars )
+   LOOP ROT 2DROP 1+ ;  
+
+: SHOWSCR  ( roffs -- ) 
+   DUP BADDR @ + SWAP LENGTH @ SWAP - ( addr #bytesleft ) ( #bytesleft is the count of chars left to be displayed from addr)
+   0 0 ROT    ( addr #rows[0] #charsperrow[0] #bytesleft )
+   0 DO 
+     ( addr addr #rows #chars )  
+      >R OVER C@ 10 = R> SWAP IF DROP 10 EMIT 1+ 0 THEN  
+      >R OVER C@  9 = R> SWAP IF DUP TABSIZE + NCOLS 1- >= IF NCOLS SWAP - SPACES 1+ 0 ELSE TABSIZE + TABSIZE SPACES THEN THEN 
+      >R OVER C@ PRINTABLE? R> SWAP IF DUP NCOLS 1- = IF DROP 1+ 0 ELSE 1+ THEN 2>R DUP C@ EMIT 2R> THEN 
+      2>R 1+ 2R> ( addr addr+ #rows #chars )  
+      OVER NROWS = IF LEAVE THEN  
+   LOOP 2DROP DROP ;  
+
+( lastrow!? If nroffs>length: notvalid)  ( offs TRUE ) ( FALSE )  ( !?)
+( finds row-offset of next row)
+: NROFFS  ( roffs -- nroffs )
+   NCOLS + DUP BADDR @ + DUP NCOLS - DO I C@ 10 = IF DROP I BADDR @ - 1+ LEAVE THEN LOOP ; 
+
+( Find previous 0 or new-line)
+: FPZNL ( roffs -- offs flagNL )
+   BADDR @ + 
+   BEGIN
+     1- DUP C@ 10 = OVER BADDR @ = OR 
+   UNTIL DUP C@ 10 = SWAP BADDR @ - SWAP ;
+
+( Check NL in previous row)
+: CHKPNL  ( roffs -- NLoffs TRUE | FALSE )
+   BADDR @ + NCOLS 0 DO 1- DUP C@ 10 = IF BADDR @ - TRUE UNLOOP EXIT THEN LOOP DROP FALSE ; 
+
+( finds row-offset of previous row)
+( NOTE that roffs cant be zero)
+: PROFFS  ( roffs -- proffs )
+   DUP CHKPNL INVERT IF NCOLS - EXIT THEN 
+   ( roffs NLoffs )
+   FPZNL  ( roffs offs flagNL )
+   IF 1+ THEN 
+   DUP >R
+   BEGIN
+    R> DROP DUP >R
+    NROFFS 2DUP = 
+   UNTIL 2DROP R> ; 
+
+( computes previous y row offset from ROFFS)
+: YPROFFS  ( y -- yroffs )
+   DUP 0<>
+   IF ROFFS @ SWAP 0 DO PROFFS LOOP 
+   ELSE DROP ROFFS @ 
+   THEN ;  
+
+: ROWSUP  ( n -- )
+   DUP NEGATE RIDX +! YPROFFS ROFFS ! ; 
+
+( computes next y row offset from ROFFS)
+: YNROFFS  ( y -- yroffs )
+   DUP 0<>
+   IF ROFFS @ SWAP 0 DO NROFFS LOOP 
+   ELSE DROP ROFFS @ 
+   THEN ;  
+
+: ROWSDN  ( n -- )
+   DUP RIDX +! YNROFFS ROFFS ! ; 
+
+( from offset zero, n rows next)
+: ROWSDN2  ( n -- )
+  0 SWAP 0 DO NROFFS LOOP ROFFS ! ;
+
+( Char-address)
+: CHADDR ( -- addr )
+   GET-XY YNROFFS + BADDR @ + ; 
+
+( Get character under the cursor)
+: GETCH  ( -- c )
+   CHADDR C@ ;
+
+( Get character under the cursor, but return SPACE if not a printable char)
+: GETCHSP  ( -- c )
+   GETCH DUP PRINTABLE? INVERT IF DROP 32 THEN ;
+
+: RESTLEN ( addr -- len )
+   BADDR @ LENGTH @ + SWAP - ;
+
+: INSCH  ( c addr -- )
+    DUP DUP 1+ OVER RESTLEN CMOVE> C! 1 LENGTH +! SAVECUR PAGEN ROFFS @ SHOWSCR INVSCR RESTORECUR ; 
+
+: PUTCUR0  ( -- )
+   INITCURSOR GETCHSP PUTCUR ;
+
+( Get position of NewLine-byte)
+: GETNLPOS  ( y -- pos|-1 )
+   -1 SWAP YNROFFS BADDR @ + NCOLS 0 DO DUP I + C@ 10 = IF 2DROP I UNLOOP EXIT THEN LOOP DROP ; 
+
+: ADJCUR  ( x y -- xAdj y )
+    OVER SWAP DUP GETNLPOS DUP -1 <> >R ROT OVER > R> AND IF ROT DROP SWAP ELSE DROP THEN ;
+
+: TOROWEND  ( rowlen -- ) 
+   GETCHSP REMCUR GET-XY NIP AT-XY GETCHSP PUTCUR ; 
+
+: KPGUP  ( -- )
+   RIDX @ 0= IF EXIT THEN 
+   GETCHSP REMCUR
+   RIDX @ NROWS > 
+   IF NROWS ROWSUP ELSE 0 RIDX ! 0 ROFFS ! 
+   THEN PAGEN ROFFS @ SHOWSCR INVSCR PUTCUR0 ;
+
+: KPGDN  ( -- )
+   RCNT @ RIDX @ - NROWS > IF GETCHSP REMCUR NROWS ROWSDN PAGEN ROFFS @ SHOWSCR INVSCR PUTCUR0 THEN ;
+
+: KUP  ( -- )
+   GETCHSP REMCUR 
+   GET-XY DUP 0> 
+   IF 1- ADJCUR AT-XY 
+   ELSE RIDX @ 0> IF 1 ROWSUP SAVECUR PAGEN ROFFS @ SHOWSCR INVSCR RESTORECUR ADJCUR AT-XY ELSE 2DROP THEN 
+   THEN GETCHSP PUTCUR ;
+
+: KDOWN  ( -- )
+   GETCHSP REMCUR 
+   GET-XY DUP NROWS 1- < OVER RIDX @ + RCNT @ 1- < AND 
+   IF 1+ ADJCUR AT-XY  
+   ELSE RCNT @ RIDX @ - NROWS > IF 1 ROWSDN SAVECUR PAGEN ROFFS @ SHOWSCR INVSCR RESTORECUR ADJCUR AT-XY ELSE 2DROP THEN 
+   THEN GETCHSP PUTCUR ;
+
+: KLEFT  ( -- )
+   GETCHSP REMCUR GET-XY OVER 0> 
+   IF SWAP 1- SWAP AT-XY 
+   ELSE NIP DUP 0= 
+     IF DROP RIDX @ 0<> 
+       IF ROFFS @ 1 ROWSUP ROFFS @ - 1- PAGEN ROFFS @ SHOWSCR INVSCR 0 AT-XY 
+       THEN 
+     ELSE DUP DUP YNROFFS SWAP 1- YNROFFS - 1- SWAP 1- AT-XY 
+     THEN
+   THEN GETCHSP PUTCUR ;
+
+: KRIGHT  ( -- )
+   GETCHSP REMCUR GET-XY DROP NCOLS 1- < GETCH 10 <> AND 
+   IF GET-XY SWAP 1+ SWAP AT-XY 
+   ELSE GET-XY NIP RIDX @ + RCNT @ 1- <
+     IF GET-XY NIP NROWS 1- = 
+       IF 1 ROWSDN PAGEN ROFFS @ SHOWSCR INVSCR 0 NROWS 1- AT-XY 
+       ELSE 0 GET-XY NIP 1+ AT-XY 
+       THEN 
+     THEN
+   THEN
+   GETCHSP PUTCUR ;
+
+: KHOME  ( -- )
+   GETCHSP REMCUR 
+   RIDX @ 0 <> IF 0 RIDX ! 0 ROFFS ! PAGEN ROFFS @ SHOWSCR INVSCR THEN 
+   PUTCUR0 ;
+
+( we should go NROWS rows up from the end of the file and not RIDX from the beginning !?)
+: KEND  ( -- )
+   GETCHSP REMCUR 
+   RCNT @ NROWS > IF RCNT @ NROWS - DUP RIDX ! ROWSDN2 PAGEN ROFFS @ SHOWSCR INVSCR THEN 
+   0 RCNT @ 1- RIDX @ - AT-XY GETCHSP PUTCUR ; 
+
+: KROWHOME  ( -- )
+   GETCHSP REMCUR 0 GET-XY NIP AT-XY GETCHSP PUTCUR ;
+
+: KROWEND  ( -- )
+   RIDX @ GET-XY NIP + RCNT @ 1- = 
+   IF LENGTH @ NROWS 1- YNROFFS - 1- DUP 1 > IF TOROWEND ELSE DROP THEN 
+   ELSE GET-XY NIP DUP 1+ YNROFFS SWAP YNROFFS - 1- DUP 1 > IF TOROWEND ELSE DROP THEN
+   THEN ;
+
+: KBCKSP  ( -- )
+   CHADDR DUP BADDR @ <>
+   IF GETCHSP REMCUR DUP 1- OVER RESTLEN CMOVE -1 LENGTH +! SAVECUR PAGEN ROFFS @ SHOWSCR INVSCR RESTORECUR KLEFT ELSE DROP THEN ;
+
+: KDEL  ( -- )
+    LENGTH @ 1 > 
+    IF GETCHSP REMCUR CHADDR 1+ DUP 1- DUP RESTLEN CMOVE -1 LENGTH +! SAVECUR PAGEN ROFFS @ SHOWSCR INVSCR RESTORECUR GETCHSP PUTCUR THEN ; 
+
+: CTRLKEYS  ( key -- )
+    CASE 
+      KEYPGUP  OF KPGUP  ENDOF 
+      KEYPGDN  OF KPGDN  ENDOF 
+      KEYUP    OF KUP    ENDOF 
+      KEYDOWN  OF KDOWN  ENDOF 
+      KEYLEFT  OF KLEFT  ENDOF 
+      KEYRIGHT OF KRIGHT ENDOF 
+      KEYHOME  OF KCTRL? IF KHOME ELSE KROWHOME THEN ENDOF 
+      KEYEND   OF KCTRL? IF KEND ELSE KROWEND THEN   ENDOF 
+      KEYBCKSP OF KBCKSP ENDOF 
+      KEYDEL   OF KDEL   ENDOF 
+    ENDCASE ;
+
+: KEYS  ( -- )
+   BEGIN 
+     KEYW DISCARD DUP KEYTAB = IF DROP 32 THEN DUP PRINTABLE? OVER KEYENTER = OR  
+     IF DUP GETCHSP REMCUR CHADDR INSCH KRIGHT ( GETCHSP PUTCUR)
+     ELSE DUP CTRLKEYS
+     THEN
+     KEYESC = 
+   UNTIL ;
+
+: TXTED  ( addr len -- len )
+   2DUP LENGTH ! BADDR ! 0 RIDX ! 0 ROFFS !
+   OPAON INITSCR DUP 0> IF CRCNT RCNT ! 0 SHOWSCR INITCURSOR GETCHSP PUTCUR KEYS OPAOFF ELSE 2DROP KEY? THEN DO>MSCR LENGTH @ ; 
+
+

@@ -1,0 +1,458 @@
+: BLOCKS ;  ( marker for FORGET)
+
+DECIMAL
+
+1024 CONSTANT BYTESPERBLOCK
+10 CONSTANT MAXBUFCNT
+HEX 220000 DECIMAL CONSTANT BLOCKBUF ( from FMM)
+
+1 CONSTANT KEYF1 
+2 CONSTANT KEYF2 
+3 CONSTANT KEYF3 
+5 CONSTANT KEYF5 
+6 CONSTANT KEYF6 
+16 CONSTANT KEYF7
+18 CONSTANT KEYF9
+22 CONSTANT KEYUP
+23 CONSTANT KEYDOWN
+24 CONSTANT KEYLEFT
+25 CONSTANT KEYRIGHT
+15 CONSTANT KEYDEL
+30 CONSTANT KEYHOME
+31 CONSTANT KEYEND
+8 CONSTANT KEYBCKSP
+9 CONSTANT KEYTAB
+10 CONSTANT KEYENTER
+27 CONSTANT KEYESC
+
+16 CONSTANT LROWS 
+64 CONSTANT LCOLS 
+0  CONSTANT LOFFSX 
+10 CONSTANT LOFFSY 
+1  CONSTANT COL1NUM 
+20 CONSTANT COL2NUM 
+40 CONSTANT COL3NUM 	
+9  CONSTANT NUMBER_COL 
+LOFFSY LROWS 2 + + CONSTANT MSGY	
+5  CONSTANT MSGX
+LOFFSY LROWS 4 + + CONSTANT BOTTOMY	
+9 CONSTANT COLVALNUM
+
+: TKEY KEYW DISCARD DROP ; ( for testing)
+
+: SECT/BL ( -- sectcntperblock ) 
+    BYTESPERBLOCK 9 RSHIFT ;
+
+( OR: call it BUFFUS, i.e. plural!?)
+( BufferUpdatedArray)
+: BUFUARR ( -- )
+    CREATE MAXBUFCNT HERE OVER ERASE ALLOT 
+    DOES> SWAP + ;
+
+( Store boolean instead !?)
+BUFUARR BUFU                           ( buffer-dirty array)
+
+( BufferBlockNumArray)
+: BUFBNARR ( -- )
+    CREATE MAXBUFCNT HERE OVER CELLS ERASE CELLS ALLOT 
+    DOES> SWAP CELLS + ;
+
+BUFBNARR BUFBN                         ( blocknum array)
+
+VARIABLE CURRBUF  ( idx of current buffer)
+
+: INITCB  ( -- )
+   -1 CURRBUF ! ;
+
+INITCB
+
+: BL>LBA  ( blnum -- lba )
+   1- 2* ;
+
+( Block in buffer?)
+: BLINBUF? ( blnum -- bufnum TRUE ) ( or: -- FALSE )  ( if not found)
+   MAXBUFCNT 0 DO DUP I BUFBN @ = IF DROP I TRUE UNLOOP EXIT THEN LOOP DROP FALSE ; 
+
+: FREEBUF? ( -- bufnum TRUE )  ( or: -- FALSE )  ( if not found)
+   MAXBUFCNT 0 DO I BUFBN @ 0= IF I TRUE UNLOOP EXIT THEN LOOP FALSE ; 
+
+: NOTUPDBUF? ( -- bufnum TRUE )  ( or: -- FALSE )  ( if not found)
+   MAXBUFCNT 0 DO I BUFU C@ 0= IF I TRUE UNLOOP EXIT THEN LOOP FALSE ; 
+
+: WRBUF1?  ( -- flag )  ( write buffer 1 back to disk)
+   BLOCKBUF SECT/BL 0 0 BUFBN @ BL>LBA HDWRITE ; ( memaddr sectcnt lbaHi lbaLo -- f )
+
+: ALLOCATE ( blnum bufnum -- )
+   DUP >R BUFBN ! 0 R> BUFU C! ;
+
+: BLINBUF  ( bufnum -- addr )
+   DUP CURRBUF ! BYTESPERBLOCK * BLOCKBUF + ; 
+
+: CALCA ( blnum -- addr )
+   0 BUFBN ! 0 0 BUFU C! 0 CURRBUF ! BLOCKBUF ;
+
+( We need a variable to indicate if we are on the main-screen or on LIST's.)
+( For example in BLOCK we print an error message, but BLOCK can be executed directly not only through LIST.)
+( We print the error message in the msg-line if we are in LIST,)
+( but we print the error message in the command line, if we are on the main-screen [i.e. BLOCK executed directly])
+VARIABLE NMSCR?   ( Not Main Screen)
+FALSE NMSCR? !
+
+: NMSCRON  ( -- )
+   TRUE NMSCR? ! ;
+
+: NMSCROFF  ( -- )
+   FALSE NMSCR? ! ;
+
+: BLWRERR  ( -- )
+   NMSCR? @ DUP IF >TMSCR MSGX MSGY AT-XY THEN ." Could not write block!" IF ."  Press a key" KEYW DISCARD DROP TMSCR> THEN ;
+
+: BLWRERR2  ( -- )
+   ." Could not write block: ";
+
+: BLNUMERR ( -- )
+   NMSCR? @ DUP IF >TMSCR MSGX MSGY AT-XY THEN ." Wrong block number!" IF ."  Press a key" KEYW DISCARD DROP TMSCR> THEN ;
+
+: BLRDERR ( -- )
+   NMSCR? @ DUP IF >TMSCR MSGX MSGY AT-XY THEN ." Could not read block!" IF ."  Press a key" KEYW DISCARD DROP TMSCR> THEN ;
+
+( block number, addr is the address of the)
+( first char of the block buffer assigned to)
+( block blnum or 0 if error.)
+: BUFFER  ( blnum -- addr )
+    DUP BLINBUF?          ( blnum bufnum TRUE ) ( blnum FALSE )
+    IF NIP BLINBUF       ( addr )
+    ELSE 
+      FREEBUF?            ( blnum bufnum TRUE ) ( blnum FALSE )
+      IF  DUP >R ALLOCATE R> BLINBUF   ( addr )
+      ELSE
+        NOTUPDBUF?        ( blnum bufnum TRUE ) ( blnum FALSE )
+        IF DUP >R ALLOCATE R> BLINBUF  ( addr )
+        ELSE 
+          WRBUF1?          ( blnum flag )
+          IF CALCA        ( addr )
+          ELSE DROP -1 CURRBUF ! BLWRERR CR 0  ( EXIT)
+          THEN
+        THEN 
+      THEN 
+    THEN ;
+
+( scan block and replace non-ascii chars with space ; also get replaced: ENTER and TAB)
+: FIXCHARS  ( addr -- ) 
+    BYTESPERBLOCK 0 DO DUP C@ DUP 32 < SWAP 127 >= OR IF 32 OVER C! THEN 1+ LOOP DROP ;
+
+( Not used !?)
+: CLEARBUF  ( addr -- ) 
+    BYTESPERBLOCK 0 DO 32 OVER C! 1+ LOOP DROP ;
+
+( Inverse of UPDATE)
+: DROPCURRBUF  ( -- )
+    CURRBUF @ -1 <> IF CURRBUF @ 0 OVER BUFBN ! 0 SWAP BUFU C! THEN ;
+
+( Loads block u to system memory. A block is 1024 bytes)
+( Currently the higher 16-bits of the LBA48 is not used)
+( Blocks begin from 1, there is no block 0)
+( [u-1]*2 gives us the LBA number [sectornum from blocknum])
+( addr is zero if there is an error)
+: BLOCK  ( u -- addr )
+   DUP 1 < IF BLNUMERR CR DROP 0 EXIT THEN 
+   DUP BUFFER ?DUP 0= IF DROP 0 EXIT THEN 
+   CURRBUF @ BUFU C@ 1 = IF NIP EXIT THEN  ( if updated, dont load)
+ ( load) 
+   ( u addr )
+   SWAP >R DUP SECT/BL 0 R> BL>LBA  
+   HDREAD ( memaddr sectcnt lbaHi lbaLo -- f )
+   IF DUP FIXCHARS 
+   ELSE DROP DROPCURRBUF BLRDERR CR 0 
+   THEN ;
+
+( Unassign all block buffers. Doesn't save their)
+( contents to disk.)
+: EMPTY-BUFFERS  ( -- )
+   MAXBUFCNT 0 DO 0 I BUFBN ! 0 I BUFU C! LOOP ; 
+
+: TRANSFER  ( bufnum -- flag )
+   DUP >R BYTESPERBLOCK * BLOCKBUF + SECT/BL 0 R> BUFBN @ BL>LBA HDWRITE ; ( memaddr sectcnt lbaHi lbaLo -- f )
+
+( Transfer the contents of each updated block)
+( buffer to mass storage. Mark all buffers as unmodified)
+: SAVE-BUFFERS  ( -- )
+   MAXBUFCNT 0 DO I BUFU C@ 1 = IF I TRANSFER IF 0 I BUFU C! ELSE BLWRERR2 I . CR LEAVE THEN THEN LOOP ; 
+
+( Marks the current block buffer as modified)
+( See FLUSH and SAVE-BUFFERS) 
+( [FLUSH calls SAVE-BUFFERS and unassigns all buffers])
+( Inverse of DROPCURRBUF)
+: UPDATE  ( -- )
+   CURRBUF @ -1 <> IF 1 CURRBUF @ BUFU C! THEN ;
+
+( Saves the contents of each updated block)
+( to disk, marks all buffers as unassigned)
+: FLUSH  ( -- )
+   SAVE-BUFFERS EMPTY-BUFFERS ;
+
+: GETNEXTALLOCBUF  ( -- bufnum TRUE ) ( -- FALSE )  ( if not found) 
+   CURRBUF @ DUP MAXBUFCNT 1- = IF DROP 0 ELSE 1+ THEN 
+   MAXBUFCNT 0 DO DUP BUFBN @ 0<> IF TRUE UNLOOP EXIT THEN 1+ DUP MAXBUFCNT = IF DROP 0 THEN LOOP DROP FALSE ; 
+
+VARIABLE MCURX 	( Saved cursor-position of the main-screen) ( 2VARIABLE !?)
+VARIABLE MCURY
+VARIABLE CURX 		( 2VARIABLE !?)
+VARIABLE CURY 
+VARIABLE CHBKGCLR
+VARIABLE LINECOPIED
+VARIABLE THEEND
+
+: INITLINECOPIED  ( -- )
+   0 LINECOPIED ! ;
+
+: INITTHEEND  ( -- )
+   FALSE THEEND ! ;
+
+INITTHEEND
+CREATE LINEBUF LCOLS ALLOT 
+
+: SAVEMCUR  ( -- )
+   GET-XY MCURY ! MCURX ! ;
+
+: RESTOREMCUR  ( -- )
+   MCURX @ MCURY @ AT-XY ;
+
+: INITCURSOR  ( -- )
+   0 0 AT-XY ;
+
+: SAVECUR  ( -- )
+   GET-XY CURY ! CURX ! ;
+
+: RESTORECUR  ( -- )
+   CURX @ CURY @ AT-XY ;
+
+: SHOWINFOTEXT  ( -- )
+   COL1NUM 1 AT-XY ." Buffer: " 
+   COL1NUM 3 AT-XY ." Block:  " 
+   COL2NUM 1 AT-XY ." F1: Copy line" 
+   COL2NUM 2 AT-XY ." F2: Paste line" 
+   COL2NUM 3 AT-XY ." F3: Delete line" 
+   COL2NUM 4 AT-XY ." F5: Clear buffer" 
+   COL2NUM 5 AT-XY ." F6: Update" 
+   COL2NUM 6 AT-XY ." F7: Drop buffer" 
+   COL2NUM 7 AT-XY ." F9: Next buffer" 
+   COL3NUM 2 AT-XY ." Home: Front" 
+   COL3NUM 3 AT-XY ." End: Back"
+   COL1NUM BOTTOMY AT-XY ." Press ESC to quit" ;
+
+: CLEARBUFNUMFIELD  ( -- )
+   COLVALNUM 1 AT-XY ."          " ;
+
+: SHOWBUFNUM ( -- )
+   CLEARBUFNUMFIELD
+   CURRBUF @ 1+ COLVALNUM 1 AT-XY . ;
+
+: CLEARBLNUMFIELD  ( -- )
+   COLVALNUM 3 AT-XY ."          " ;
+
+: SHOWBLNUM ( -- )
+   CLEARBLNUMFIELD
+   SCR @ COLVALNUM 3 AT-XY . ;
+
+: SHOWUPD  ( -- )
+   COL3NUM BOTTOMY AT-XY 
+   CURRBUF @ BUFU C@ 0= IF ." Not updated" ELSE ." Updated    " THEN ; 
+
+: SHOWDATA  ( -- )
+   SHOWBUFNUM SHOWBLNUM SHOWUPD ;
+
+: SHOWBUF  ( addr -- )
+   INITCURSOR BYTESPERBLOCK 0 DO DUP C@ EMIT 1+ LOOP DROP ;
+
+: OPAON  ( -- )
+   1 OPAQUE ! CHBKGCURRCLR @ [ HEX ] FFFF AND CHBKGCLR ! BKGFGCLR @ FFFF AND CHBKGCURRCLR @ FFFF0000 AND OR CHBKGCURRCLR ! [ DECIMAL ] ;
+
+: OPAOFF  ( -- )
+   0 OPAQUE ! CHBKGCLR @ CHBKGCURRCLR @ [ HEX ] FFFF0000 AND OR CHBKGCURRCLR ! [ DECIMAL ] ;
+
+: GETCURRBUFA ( -- addr )
+   BLOCKBUF CURRBUF @ BYTESPERBLOCK * + ;
+
+: LCOLS*  ( col -- col*colcnt )
+   6 LSHIFT ;
+
+( Char-address)
+: CHADDR ( -- addr )
+   GETCURRBUFA 
+   GET-XY LCOLS* + + ;
+
+( Get character under the cursor)
+: GETCH  ( -- c )
+   CHADDR C@ ;
+
+: STORECH ( c -- )
+   CHADDR C! ;
+
+: LINEADDR ( -- addr )
+   GETCURRBUFA 
+   GET-XY NIP LCOLS* + ;
+
+: LINE>BUF (  -- )
+   LINEADDR LCOLS 0 DO DUP C@ LINEBUF I + C! 1+ LOOP 1 LINECOPIED ! ;
+
+: LINE<BUF  ( -- )
+   LINEBUF LINEADDR LCOLS 0 DO >R DUP C@ R@ C! 1+ R> 1+ LOOP ;
+
+: LINE0  ( -- )
+   GET-XY NIP 0 SWAP AT-XY ; 
+
+: PRINTLN  ( -- )
+   LINE0 LINEADDR LCOLS TYPE ; 
+
+: PASTELINE ( -- )
+   LINE<BUF PRINTLN ; 
+
+: CLEARLN  ( -- )
+   LINEADDR DUP LCOLS 32 FILL LCOLS LINE0 TYPE ; 
+
+: CLEARLNS  ( -- )
+   LROWS 0 DO 0 I AT-XY CLEARLN LOOP ;
+
+: SAVELISTED  ( -- )
+   CURRBUF @ BUFBN @ SCR ! ;
+
+: TOLEFT ( -- )
+   GET-XY SWAP 1- SWAP AT-XY ;
+
+: TORIGHT ( -- )
+   GET-XY SWAP 1+ SWAP AT-XY ;
+
+: TOUP ( -- )
+   GET-XY 1- AT-XY ;
+
+: TODOWN ( -- )
+   GET-XY 1+ AT-XY ;
+
+: TONEXTROW ( -- )
+   GET-XY 1+ NIP 0 SWAP AT-XY ;
+
+: KLEFT  ( -- )
+   GET-XY DROP 0> IF GETCH REMCUR TOLEFT GETCH PUTCUR THEN ;
+
+: KRIGHT  ( -- )
+   GET-XY DROP LCOLS 1- < IF GETCH REMCUR TORIGHT GETCH PUTCUR THEN ;
+
+: KUP  ( -- )
+   GET-XY NIP 0> IF GETCH REMCUR TOUP GETCH PUTCUR THEN ;
+
+: KDOWN  ( -- )
+   GET-XY NIP LROWS 1- < IF GETCH REMCUR TODOWN GETCH PUTCUR THEN ;
+
+: KENTER  ( -- )
+   GET-XY NIP LROWS 1- < IF GETCH REMCUR TONEXTROW GETCH PUTCUR THEN ;
+
+: CURBCKSP  ( -- )
+   GET-XY OVER 0= IF 1- NIP LCOLS 1- SWAP ELSE SWAP 1- SWAP THEN AT-XY ;
+
+: PRSPACE  ( -- )
+   SAVECUR SPACE RESTORECUR ;
+
+: KBCKSP  ( -- )
+   GET-XY 0= SWAP 0= AND IF EXIT THEN 
+   GETCH REMCUR CURBCKSP
+   32 STORECH PRSPACE GETCH PUTCUR ;
+
+: KDEL  ( -- )
+   GETCH REMCUR 32 STORECH PRSPACE GETCH PUTCUR ;
+
+: KHOME  ( -- )
+   GETCH REMCUR GET-XY NIP 0 SWAP AT-XY GETCH PUTCUR ;
+
+: KEND  ( -- )
+   GETCH REMCUR GET-XY NIP LCOLS 1- SWAP AT-XY GETCH PUTCUR ;
+
+: KF1  ( -- )
+   LINE>BUF ;
+
+: KF2  ( -- )
+   LINECOPIED @ 1 = IF GETCH REMCUR PASTELINE LINE0 GETCH PUTCUR THEN ; 
+
+: KF3  ( -- )
+   GETCH REMCUR CLEARLN LINE0 GETCH PUTCUR ;
+
+: KF5  ( -- )
+   GETCH REMCUR CLEARLNS INITCURSOR GETCH PUTCUR ;
+
+: KF6  ( -- )
+   UPDATE GETCH REMCUR >TMSCR SHOWUPD TMSCR> GETCH PUTCUR ;
+
+: KF7  ( -- )
+   CLEARLNS DROPCURRBUF GETNEXTALLOCBUF 
+   IF CURRBUF ! SAVELISTED GETCH REMCUR >TMSCR SHOWDATA TMSCR> GETCURRBUFA SHOWBUF INITCURSOR GETCH PUTCUR 
+   ELSE INITCB TRUE THEEND ! THEN ;
+
+: KF9  ( -- )
+   GETNEXTALLOCBUF 
+   IF CURRBUF ! SAVELISTED GETCH REMCUR >TMSCR SHOWDATA TMSCR> GETCURRBUFA SHOWBUF INITCURSOR GETCH PUTCUR THEN ; 
+
+: DOMSCR>  ( -- )
+   LOFFSX LOFFSY LCOLS LROWS MSCR> ;
+
+: DO>MSCR  ( -- )
+   >MSCR OSPARSON SCROLLON RESTOREMCUR ;
+
+: INITSCR  ( addr -- )
+   OSPARSOFF SCROLLOFF 
+   32 REMCUR SAVEMCUR PAGE  
+   SHOWINFOTEXT SHOWDATA 
+   DOMSCR> NMSCRON SHOWBUF INITCURSOR GETCH PUTCUR ;
+
+: PRINTABLE? ( key -- flag )
+    DUP 32 >= SWAP 127 < AND ;
+
+: CTRLKEYS  ( key -- )
+    CASE 
+      KEYLEFT OF KLEFT ENDOF 
+      KEYRIGHT OF KRIGHT ENDOF 
+      KEYUP OF KUP ENDOF 
+      KEYDOWN OF KDOWN ENDOF 
+      KEYENTER OF KENTER ENDOF
+      KEYBCKSP OF KBCKSP ENDOF
+      KEYDEL OF KDEL ENDOF
+      KEYHOME OF KHOME ENDOF
+      KEYEND OF KEND ENDOF
+      KEYF1 OF KF1 ENDOF
+      KEYF2 OF KF2 ENDOF
+      KEYF3 OF KF3 ENDOF
+      KEYF5 OF KF5 ENDOF
+      KEYF6 OF KF6 ENDOF
+      KEYF7 OF KF7 ENDOF
+      KEYF9 OF KF9 ENDOF
+    ENDCASE ;
+
+: KEYS  ( -- )
+   BEGIN 
+     KEYW DISCARD DUP KEYTAB = IF DROP 32 THEN DUP PRINTABLE? 
+     IF DUP DUP GETCH REMCUR STORECH EMIT GETCH PUTCUR 
+     ELSE DUP CTRLKEYS
+     THEN
+     KEYESC = 
+     THEEND @ 
+     OR 
+   UNTIL ;
+
+: INIT  ( -- )
+   INITCB INITLINECOPIED INITTHEEND ;
+
+( Lists the contents of block n from disk.)
+( This is the editor [Forth-screen is 64*16])
+: LIST  ( u -- )
+   DUP 0= 
+   IF BLNUMERR DROP CR EXIT THEN 
+   INIT DUP BLOCK ?DUP 0= 
+   IF DROP EXIT THEN 
+   SWAP SCR ! OPAON INITSCR KEYS OPAOFF DO>MSCR NMSCROFF ;
+
+: LOAD  ( u -- )
+   DUP 1 < IF DROP ." Wrong block number!" CR EXIT THEN 
+   >R SAVE-INPUT R> DUP BLOCK DUP 0<> 
+   IF INPBUFF ! BYTESPERBLOCK #INPBUFF ! 0 >IN ! BLK ! INTERPRET 
+   ELSE 2DROP THEN RESTORE-INPUT DROP ;
+
+

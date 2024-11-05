@@ -1,0 +1,190 @@
+( 3DVECTOR and 4*4Matrix operations)
+
+DECIMAL
+
+: IVECMAT ;  ( marker for FORGET)
+
+16384 CONSTANT SCALE
+
+( clears vector)
+: VEC30 ( addr -- ) 
+   3 CELLS 0 FILL ;
+
+( creates a vector)
+ : VEC3 ( -- )   ( RT:) ( idx -- addr )
+   CREATE HERE VEC30 3 CELLS ALLOT 
+   DOES> SWAP 1- CELLS + ; 
+
+( prints a vector)
+: VEC3?  ( addr -- )
+   3 0 DO DUP ? CELL+ LOOP DROP ;
+
+( magnitude of vector)
+: VEC3M  ( addr -- magn) 
+(   3 0 DO DUP @ DUP * SWAP CELL+ LOOP DROP + + ISQRT ;)   ( If SQRT is used, then result, when used later, needs to be divided by 65536)
+   3 0 DO DUP @ DUP * SWAP CELL+ LOOP DROP + + ;   ( If SQRT is used, then result, when used later, needs to be divided by 65536)
+
+VEC3 VECRES
+
+( adds two vectors)
+: VEC3+  ( addr1 addr2 -- )  ( result at addr1)
+   3 0 DO DUP @ ROT DUP ROT SWAP +! CELL+ SWAP CELL+ LOOP 2DROP ;
+
+( subtracts vector2 from vector1)
+: VEC3-  ( addr1 addr2 -- )  ( result at addr1)
+   3 0 DO DUP @ NEGATE ROT DUP ROT SWAP +! CELL+ SWAP CELL+ LOOP 2DROP ;
+
+( negates vector)
+: -VEC3  ( addr -- )  ( result at addr)
+   3 0 DO DUP DUP @ NEGATE SWAP ! CELL+ LOOP DROP ;
+
+( multiplies a vector by a value)
+: VEC3*  ( addr val --) ( result at addr) 
+   3 0 DO 2DUP OVER @ * SWAP ! SWAP CELL+ SWAP LOOP 2DROP ; 
+
+( divides vector by a value)
+: VEC3/  ( addr val --)  ( result in at addr)  ( IF val==ZERO????????????)
+   3 0 DO 2DUP OVER @ SWAP / SWAP ! SWAP CELL+ SWAP LOOP 2DROP ; 
+
+( normalizes vector)
+: VEC3N  ( addr -- )  ( result at addr)
+   DUP VEC3M ( addr magn -- ) VEC3/ ;
+
+VARIABLE IRES
+( ab = a1*b1+a2*b2+a3*b3)
+( dot product of two vectors)  ( Vectors must have equal length)
+( : VEC3D)  ( addr1 addr2 -- dotprod) 
+(   0 ROT ROT 3 0 DO 2DUP @ SWAP @ * 2SWAP ROT ROT + ROT ROT CELL+ SWAP CELL+ LOOP 2DROP ;)
+: VEC3D  ( addr1 addr2 -- dotprod) ( using VARIABLE IRES)
+   0 IRES ! 3 0 DO 2DUP @ SWAP @ * IRES +! CELL+ SWAP CELL+ LOOP 2DROP IRES @ ;
+
+( c=axb
+  cx=ay*bz-az*by
+  cy=az*bx-ax*bz
+  cz=ax*by-ay*bx )
+( cross product of two vectors)
+: VEC3X  ( addr1 addr2 -- )  ( result in VECRES)
+   2DUP CELL+ CELL+ @ SWAP CELL+ @ * >R                   ( R: ay*bz)
+   2DUP CELL+ @ SWAP CELL+ CELL+ @ * R> SWAP - 1 VECRES ! ( addr1 addr2) ( VECRES1: ay*bz-az*by)
+   2DUP @ SWAP CELL+ CELL+ @ * >R                         ( R: az*bx)
+   2DUP CELL+ CELL+ @ SWAP @ * R> SWAP - 2 VECRES !       ( addr1 addr2) ( VECRES2: az*bx-ax*bz)
+   2DUP CELL+ @ SWAP @ * >R                               ( R: ax*by)
+   2DUP @ SWAP CELL+ @ * R> SWAP - 3 VECRES !             ( addr1 addr2) ( VECRES3: ax*by-ay*bx)
+   2DROP ;
+
+( copy vector at addr2 to vector at addr1)
+: VEC3CP  ( addr1 addr2 -- )
+   3 0 DO OVER SWAP DUP @ ROT ! CELL+ SWAP CELL+ SWAP LOOP 2DROP ;
+
+( **************HOW TO USE************************
+VEC3 VEC1
+VEC3 VEC2
+30 1 VEC1 ! 70 2 VEC1 ! 110 3 VEC1 ! 
+20 1 VEC2 ! 80 2 VEC2 ! 50 3 VEC2 ! 
+1 VEC1 VEC3? CR
+1 VEC2 VEC3? CR
+1 VEC1 VEC3M . CR
+1 VEC1 1 VEC2 VEC3+ 1 VEC1 VEC3? CR
+1 VEC1 1 VEC2 VEC3- 1 VEC1 VEC3? CR
+1 VEC1 -VEC3 1 VEC1 VEC3? CR 
+1 VEC1 2 VEC3* 1 VEC1 VEC3? CR
+1 VEC1 2 VEC3/ 1 VEC1 VEC3? CR
+1 VEC1 VEC3N 1 VEC1 VEC3? CR 
+1 VEC1 1 VEC2 VEC3D . CR
+1 VEC1 1 VEC2 VEC3X 1 VECRES VEC3? CR
+1 VEC1 VEC3? CR
+1 VEC2 VEC3? CR
+1 VEC1 1 VEC2 VEC3CP 
+1 VEC1 VEC3? CR
+1 VEC2 VEC3? CR
+**********************************************)
+
+( 4*4 matrix)
+
+( clears a matrix) 
+: MAT0  ( addr -- ) 
+   16 CELLS 0 FILL ;
+
+( inits a matrix to scaled identity matrix) 
+: MATI  ( addr -- ) 
+	DUP MAT0 4 0 DO DUP SCALE SWAP ! 5 CELLS + LOOP DROP ;
+
+( creates a matrix)
+: MAT ( -- )  ( RT:) ( #row #col -- addr ) 
+	CREATE HERE MATI 
+	16 CELLS ALLOT
+	DOES> ROT 1- 4 * CELLS + SWAP 1- CELLS + ; 
+
+( prints a matrix) 
+: MAT?  ( addr -- ) 
+	CR 4 0 DO 4 0 DO DUP ? CELL+ LOOP CR LOOP DROP ;
+
+( multiplies elements with value)
+: MAT* ( addrm value -- ) ( result at addrm) 
+   16 0 DO 2DUP >R DUP @ R> * SWAP ! SWAP CELL+ SWAP LOOP 2DROP ;
+
+( divides elements with value)
+: MAT/ ( addrm value -- ) ( result at addrm) 
+   16 0 DO 2DUP >R DUP @ R> / SWAP ! SWAP CELL+ SWAP LOOP 2DROP ;
+
+SCALE CONSTANT CW  ( W=1 [scaled] is used as the 4th value)
+VARIABLE VW	       ( the W) 
+
+: ADDW ( addrm+3 -- )  ( result added to VECRES)
+   3 0 DO DUP @ CW * I 1+ VECRES +! 4 CELLS + LOOP DROP ;
+
+: CALCW ( addrm4throw addrv -- )  ( result in VW)
+   OVER SWAP VEC3D VW ! 3 CELLS + @ CW * VW +! ;
+
+( Matrix*Vector)   ( result in VECRES)
+: MV* ( addrm addrv -- )  
+   DUP ROT SWAP 3 0 DO 2DUP VEC3D I 1+ VECRES ! SWAP 4 CELLS + SWAP LOOP DROP 
+   ( addrv addrm+3row) DUP 9 CELLS - ( addrm points to last value of first row) 
+   ADDW ( addrv addrm+3row) SWAP CALCW 
+ ( we divide VW by SCALE and we get WValue, if the WValue is not zero or 1, then we divide with this WValue the vector and the VW)
+   VW @ SCALE / DUP 0 <> SWAP 1 <> AND IF VW @ SCALE / DUP VW @ SWAP / VW ! 1 VECRES SWAP VEC3/  
+   THEN ;
+   
+( R*C is the subprocedure of MM*, adrow is the address of a row of matrixA, adcol is the address of a column of matrixB)
+( : R*C)  ( adrow adcol -- n) ( row*col for 4*4Matrix multiplication) ( n is a 4-dimensional dorproduct !? addr1: CELL+, addr2: 4 CELLS +)
+(   0 ROT ROT 4 0 DO 2DUP @ SWAP @ * 2SWAP ROT ROT + ROT ROT CELL+ SWAP 4 CELLS + LOOP 2DROP ;)
+: R*C  ( addr1 addr2 -- dotprod) ( using VARIABLE IRES)
+   0 IRES ! 4 0 DO 2DUP @ SWAP @ * IRES +! 4 CELLS + SWAP CELL+ SWAP LOOP 2DROP IRES @ ;
+
+MAT MRES 
+
+( Matrix*Matrix) 
+: MM* ( addrm1 addrm2 -- ) ( result in MRES)
+   4 0 DO 4 0 DO 2DUP R*C J 1+ I 1+ MRES ! CELL+ LOOP 4 CELLS - SWAP 4 CELLS + SWAP LOOP 2DROP ; 
+
+( copies matrix at addr2 to matrix at addr1)
+: MATCP   ( addr1 addr2 -- )
+   16 0 DO 2DUP @ SWAP ! CELL+ SWAP CELL+ SWAP LOOP 2DROP ;
+
+( For testing:)
+: FILLMAT  ( startval addr)
+   16 0 DO 2DUP ! CELL+ SWAP 10 + SWAP LOOP  2DROP ;
+
+( **************HOW TO USE************************
+VEC3 VEC1
+30 1 VEC1 ! 70 2 VEC1 ! 110 3 VEC1 ! 
+MAT ROTX
+MAT ROTY
+  
+10 1 1 ROTX FILLMAT
+33 2 1 ROTX !         ; to store 33 at [2,1] of ROTX
+1 VEC1 VEC3?
+1 1 ROTX MAT?
+
+1 1 ROTX 1 VEC1 MV*
+1 VECRES VEC3?
+
+1 1 ROTX 1 1 ROTY MM*
+1 1 MRES MAT?
+
+1 1 ROTX 1 1 ROTY MATCP 
+1 1 ROTX MAT?
+**********************************************)
+
+
+

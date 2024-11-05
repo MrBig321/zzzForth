@@ -1,0 +1,34 @@
+( The HDAudio driver worked on Dell D820 and an old desktop computer.
+I also tested it on Dell Inspiron 5559 and Eee PC 1001PX.
+; FEATURES
+;	- Uses the first codec found
+;	- Output only
+;	- Short list-entries only (parsing 2 DWORDS, i.e. max 8 ConnListEntries for a node)
+;	- (Range)	Not implemented yet
+;	- Sets volume to medium (gain = 0x3F) (0x7F is the maximum)
+;	- DEBUGPARSE defined: prints parse-paths
+;	- DEBUG_SETTINGS prints the values of the widgets after we set them
+;	- I couldn't test the Knob-widget 
+
+AUCODECSINFO prints data about codec, widgets (e.g. widget-capabilities), 
+it can be executed right after boot, if HDAUDIO was successfully detected.
+
+AUINFO prints the values of the registers and the DMA-positions. 
+It is useful to see if the DMA-engines are looping or not (constantly changing value in case of every AUINFO).
+This is true, if we execute AUINFO during audio-play.
+Note that only 8 positions get printed, so if there are 7 input-streams and 9 output streams, then 
+the last one will show the DMA-position of the first output-stream.
+If there are 4 input-streams and 4 output-streams then the 5th value will be the first output-stream's.
+
+
+; How to use:
+( USBXHCI)
+USBENUM .     ( in my case, the device-address of the pendrive is 2)
+2 USBFSINIT . . . .
+( FALSE USBFSLS .)
+HEX
+20000000 USBFSREAD NINA.WAV" . .
+3F AUSETVOL 
+20000000 AUWAV .
+
+

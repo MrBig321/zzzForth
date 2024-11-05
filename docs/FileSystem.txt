@@ -1,0 +1,16 @@
+; FileSystem was written in assembly, but was removed from ZFOS.
+; It was a modified FAT32
+
+1.  FSFORMAT .  ( formats HD, updates hdfsmbr(hdfsmbrbytes) and hdfsboot(hdfsbootbytes), then writes them to disk (HD).
+2.  FSINIT .
+3.  Copy HDFSLODR.SYS and KRNL.SYS from pendrive to HD as "LODR.SYS" and "KRNL.SYS". 
+        (HDFSLODR.SYS writes in 16-bit mode a signature (a DWORD) for kernel.asm)
+4.  Load files to memory from pendrive (USB)
+5.  Write them to HD: 
+        HEX
+        20000000 sizeinbytes FSWRITE LODR.SYS" .
+        FALSE FSLS .
+        ( Load Kernel-file to memory)
+        20000000 sizeinbytes FSWRITE KRNL.SYS" .
+6. In Bochs or QEMU select boot from HD 
+

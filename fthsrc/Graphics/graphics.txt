@@ -1,0 +1,807 @@
+( Call INVSCR or INVSCRRECT after these functions in order to 
+appear on the screen: copy to framebuffer from screenbuffer)
+
+: GRAPHICS ;  ( marker for FORGET)
+
+DECIMAL
+
+: KEY? ( -- )
+   KEYW DISCARD DROP ; 
+
+63488 CONSTANT RED    ( F800)
+2016  CONSTANT GREEN  ( 7E0)
+31    CONSTANT BLUE   ( 1F)
+
+: CHKXY  ( x y -- flag )
+   SCRH U< SWAP SCRW U< AND ; 
+
+: CHKDXY  ( x1 y1 x2 y2 -- flag )
+   SCRH U< SWAP SCRW < AND >R 
+   SCRH U< SWAP SCRW < AND R> AND ; 
+
+: CLIPXY  ( x y -- xc yc )
+   DUP 0< IF DROP 0 ELSE DUP SCRH >= IF DROP SCRH 1- THEN THEN 
+   SWAP DUP 0< IF DROP 0 ELSE DUP SCRW >= IF DROP SCRW 1- THEN THEN SWAP ;
+
+: GETMEMADDR  ( x y -- addr )
+   SCRW 2* * SWAP 2* + SCRBUFF @ + ;
+
+: PIXEL  ( x y clr -- ) 
+   >R GETMEMADDR R> SWAP W! ;
+
+( **********ZXLINE**********)
+VARIABLE INCCNTR  ( incremental counter)
+VARIABLE HSTEP    ( HorizStep; 2 bytes per pixel in 5:6:5)
+VARIABLE VSTEP    ( VerticalStep; SCRW*2)
+
+: ZXHORIZ ( xdiff ydiff clr memaddr -- )
+   2OVER DROP DUP 2/ INCCNTR ! 
+   1+ 0 DO 2DUP W! HSTEP @ + 2>R DUP INCCNTR +! OVER INCCNTR @ U< 
+   IF OVER NEGATE INCCNTR +! R> VSTEP @ + >R THEN 2R> LOOP 2DROP 2DROP ;
+   
+: ZXVERT ( xdiff ydiff clr memaddr -- )
+   2OVER NIP DUP 2/ INCCNTR ! 
+   1+ 0 DO 2DUP W! VSTEP @ + 2>R OVER INCCNTR +! DUP INCCNTR @ U< 
+   IF DUP NEGATE INCCNTR +! R> HSTEP @ + >R THEN 2R> LOOP 2DROP 2DROP ;
+
+: ZXINIT  ( x1 y1 x2 y2 clr -- xdiff ydiff clr memaddr )
+   2 HSTEP ! SCRW 2* VSTEP ! >R 2OVER 2>R ROT - DUP 0< 
+   IF ABS VSTEP @ NEGATE VSTEP ! THEN >R SWAP - DUP 0< 
+   IF ABS HSTEP @ NEGATE HSTEP ! THEN R> 2R> GETMEMADDR R> SWAP ;
+
+: ZXLINE  ( x1 y1 x2 y2 clr -- )
+   ZXINIT 2OVER U>= IF ZXHORIZ ELSE ZXVERT THEN ; 
+
+( Sutherland-Cohen line clipping algorithm)
+0 CONSTANT CLIP_INSIDE  ( 0000)
+1 CONSTANT CLIP_LEFT    ( 0001)
+2 CONSTANT CLIP_RIGHT   ( 0010)
+4 CONSTANT CLIP_BOTTOM  ( 0100)
+8 CONSTANT CLIP_TOP     ( 1000)
+
+0 CONSTANT XMIN
+SCRW 1- CONSTANT XMAX
+0 CONSTANT YMIN
+SCRH 1- CONSTANT YMAX
+
+: GETYOUTCODE  ( y -- yoc )
+   DUP YMIN < IF CLIP_BOTTOM ELSE DUP YMAX > IF CLIP_TOP ELSE 0 THEN THEN NIP ;
+
+: GETXOUTCODE  ( x -- xoc )
+   DUP XMIN < IF CLIP_LEFT ELSE DUP XMAX > IF CLIP_RIGHT ELSE 0 THEN THEN NIP ;
+
+: GETOUTCODE  ( x y -- oc )
+   GETYOUTCODE SWAP GETXOUTCODE OR ;
+
+: INTERSECTY  ( x1 y1 x2 y2 ylim -- xc yc )
+   >R 2OVER NIP - R@ SWAP >R ROT - >R OVER - R> * R> / + R> ; 
+
+: INTERSECTX  ( y1 x1 y2 x2 xlim -- xc yc )
+   >R 2OVER NIP - R@ SWAP >R ROT - >R OVER - R> * R> / + R> SWAP ; 
+( With normal stack order:)
+  ( >R 2OVER >R ROT SWAP - 2R@ DROP SWAP >R >R ROT R> SWAP - >R SWAP - R> * R> / R> + R> SWAP ;)
+
+( TRUE means that line [or part of it] is on screen)
+: LINECLIP  ( x1 y1 x2 y2 -- x1c y1c x2c y2c TRUE )  ( Or: ... -- FALSE )
+   2OVER GETOUTCODE >R 2DUP GETOUTCODE >R  ( x1 y1 x2 y2 )  ( R: oc1 oc2 )
+   BEGIN 
+     2R> 2DUP OR 0= 
+     IF 2DROP TRUE EXIT THEN 
+     2DUP AND 0<>  
+     IF 2DROP 2DROP 2DROP FALSE EXIT THEN 
+     2DUP 2>R                         ( x1 y1 x2 y2 oc1 oc2 )  ( R: oc1 oc2 )
+     SWAP > IF 2R@ NIP ELSE 2R@ DROP THEN ( x1 y1 x2 y2 oc1|oc2 ) ( R: oc1 oc2 )
+     DUP >R                              ( x1 y1 x2 y2 oc1|oc2 ) ( R: oc1 oc2 oc1|oc2 )
+     CASE
+       DUP CLIP_TOP AND    OF >R 2OVER 2OVER YMAX INTERSECTY R>           ENDOF 
+       DUP CLIP_BOTTOM AND OF >R 2OVER 2OVER YMIN INTERSECTY R>           ENDOF 
+       DUP CLIP_RIGHT AND  OF >R 2OVER SWAP 2OVER SWAP XMAX INTERSECTX R> ENDOF
+       DUP CLIP_LEFT AND   OF >R 2OVER SWAP 2OVER SWAP XMIN INTERSECTX R> ENDOF 
+     ENDCASE 
+     ( x1 y1 x2 y2 x y ) ( R: oc1 oc2 oc1|oc2 )
+     2R> OVER = 
+     IF DROP 2SWAP 2DROP 2DUP GETOUTCODE >R 
+	 ELSE R> DROP >R 2DUP GETOUTCODE R> 2>R 2ROT 2DROP 2SWAP 
+     THEN
+   AGAIN ;
+
+( **********POLY**********)
+3  CONSTANT MINPCNT
+64 CONSTANT MAXPCNT	    ( max pairs of coords, i.e. [x, y])
+
+2VARIABLE LASTXY
+VARIABLE PCLR
+
+: POLY  ( x1 y1 ... xn yn clr cnt -- )   ( cnt: number of coords, i.e. [x, y])
+   DUP MINPCNT U< OVER MAXPCNT U> OR IF SWAP DROP 0 DO 2DROP LOOP EXIT THEN 
+   2OVER LASTXY 2! SWAP PCLR ! 1- 0               ( x1 y1 ... xn yn cnt-1 0 )  
+   DO 2OVER PCLR @ ZXLINE LOOP LASTXY 2@ PCLR @ ZXLINE ; 
+
+VARIABLE SWAPPED
+CREATE TESTARR 220 , 110 , 75 , 300 , 1000 , 15 , 200 , 1400 , 400 , 600 , 
+
+: ARR? ( addr cnt -- )
+   0 DO DUP ? CELL+ LOOP DROP CR ;
+
+( Bubble sort)
+: BSORT  ( addrArray cnt -- ) 
+   1- 
+   BEGIN  
+     FALSE SWAPPED ! 
+     2DUP 2>R 0 
+     DO 
+       DUP CELL+ OVER @ SWAP @ >   ( addrArray flag ) 
+         IF DUP @ >R DUP DUP CELL+ DUP >R @ SWAP ! 2R> ! TRUE SWAPPED ! THEN 
+       CELL+
+     LOOP  
+     DROP 
+     2R> 1- DUP 2 < 
+   SWAPPED @ INVERT OR UNTIL 2DROP ;
+
+VARIABLE VMIN
+: FINDMIN2  ( addrArray cnt -- min )
+   SCRH 1- VMIN ! 0 
+   DO 
+     DUP @ VMIN @ <
+     IF DUP @ VMIN ! THEN 
+     CELL+ 
+   LOOP DROP VMIN @ ;
+
+: FINDMIN  ( addrArray cnt -- min )
+   SCRH 1- SWAP 0 
+   DO 
+     >R DUP @ DUP R@ <
+     IF R> DROP ELSE DROP R> THEN 
+     SWAP CELL+ SWAP 
+   LOOP NIP ;
+
+: FINDMAX  ( addrArray cnt -- max )
+   0 SWAP 0 
+   DO 
+     >R DUP @ DUP R@ >
+     IF R> DROP ELSE DROP R> THEN 
+     SWAP CELL+ SWAP 
+   LOOP NIP ;
+
+CREATE XCOORDS MAXPCNT CELLS ALLOT 
+CREATE YCOORDS MAXPCNT CELLS ALLOT 
+( 2VARIABLE !?)
+
+: TOCOORDS  ( x1 y1 ... xn yn cnt -- )
+   0 DO YCOORDS I CELLS + ! XCOORDS I CELLS + ! LOOP ;
+( OR to have the first coords in the first place, but POLY [does it matter!?] doesn't do this:) 
+( 0 DO YCOORDS cnt-1 I - CELLS + ! XCOORDS I CELLS + ! LOOP ;)
+
+VARIABLE CCNT
+VARIABLE JVAR
+CREATE NODEX MAXPCNT CELLS ALLOT 
+
+: CALCX  ( jvar j i -- x )
+   DUP >R                    ( jvar j i )  ( R: i )
+   YCOORDS SWAP CELLS + @ -  ( jvar pixelY-polyY[i] )  ( R: i )
+   OVER XCOORDS SWAP CELLS + @ XCOORDS R@ CELLS + @ - * 
+   SWAP YCOORDS SWAP CELLS + @ YCOORDS R@ CELLS + @ - / 
+   XCOORDS R> CELLS + @ + ; 
+
+: CALCX2  ( polyY[jvar] polyX[jvar] polyX[i] pixelY polyY[i] -- x )
+   DUP >R - ROT ROT DUP >R - * 
+   SWAP 2R> >R - / R> + ;
+
+( Filled polygon)
+( http://alienryderflex.com/polygon_fill/)
+( Title:Efficient Polygon Fill Algorithm With C Code Sample)
+: FPOLY  ( x1 y1 ... xn yn clr cnt -- )   ( cnt: number of coords, i.e. [x, y])
+   DUP MINPCNT U< OVER MAXPCNT U> OR IF SWAP DROP 0 DO 2DROP LOOP EXIT THEN 
+( Check coords VS SCRH/W !? )
+   SWAP PCLR ! DUP CCNT ! TOCOORDS 
+   YCOORDS CCNT @ FINDMAX       ( 1+ !?)
+   YCOORDS CCNT @ FINDMIN    ( words: GETMAX, GETMIN !?)
+   DO 
+     ( build a list of nodes)
+     NODEX 
+     CCNT @ DUP 1- JVAR ! 0 
+     DO 
+       YCOORDS I CELLS + @ J < YCOORDS JVAR @ CELLS + @ J >= AND 
+       YCOORDS JVAR @ CELLS + @ J < YCOORDS I CELLS + @ J >= AND OR
+       IF JVAR @ J I CALCX OVER ! CELL+ THEN
+       I JVAR !
+     LOOP 
+     NODEX - 2/ 2/ DUP 1 > 
+     IF
+       DUP >R NODEX SWAP BSORT NODEX R> 0
+       ( fill the pixels between node pairs)
+       DO
+( Check VXMAX, VXMIN is missing !)
+         DUP DUP @ J ROT CELL+ @ J PCLR @ ZXLINE CELL+ CELL+
+       2 +LOOP
+     THEN
+     DROP
+   LOOP ;
+
+VARIABLE RADIUS
+VARIABLE FILLED
+VARIABLE XVAR
+VARIABLE YVAR
+
+: CIRCLE  ( cx cy r clr -- )
+   PCLR ! DUP RADIUS ! 0 2>R  ( cx cy -- )  ( R: dx dy )
+   BEGIN 
+	RADIUS @ R@ DUP * <= 
+    IF 2R> SWAP 1- SWAP 2DUP 2>R DROP 2* 1+ RADIUS +! THEN 
+( POINT)
+    OVER 2R@ DROP + OVER R@ + CLIPXY FILLED @ IF YVAR ! XVAR ! ELSE PCLR @ PIXEL THEN 
+    OVER 2R@ DROP - OVER R@ - CLIPXY FILLED @ IF XVAR @ YVAR @ PCLR @ ZXLINE ELSE PCLR @ PIXEL THEN 
+    OVER 2R@ DROP - OVER R@ + CLIPXY FILLED @ IF YVAR ! XVAR ! ELSE PCLR @ PIXEL THEN 
+    OVER 2R@ DROP + OVER R@ - CLIPXY FILLED @ IF XVAR @ YVAR @ PCLR @ ZXLINE ELSE PCLR @ PIXEL THEN 
+    OVER R@ + OVER 2R@ DROP + CLIPXY FILLED @ IF YVAR ! XVAR ! ELSE PCLR @ PIXEL THEN 
+    OVER R@ - OVER 2R@ DROP - CLIPXY FILLED @ IF XVAR @ YVAR @ PCLR @ ZXLINE ELSE PCLR @ PIXEL THEN 
+    OVER R@ - OVER 2R@ DROP + CLIPXY FILLED @ IF YVAR ! XVAR ! ELSE PCLR @ PIXEL THEN 
+    OVER R@ + OVER 2R@ DROP - CLIPXY FILLED @ IF XVAR @ YVAR @ PCLR @ ZXLINE ELSE PCLR @ PIXEL THEN 
+    R> 1+ >R 
+    2R@ <= UNTIL 2DROP 2R> 2DROP ;  ( if flag=TRUE --> stops ) 
+
+( original order of computation: 
+    OVER 2R@ DROP + OVER R@ + CLIPXY PCLR @ PIXEL
+    OVER 2R@ DROP - OVER R@ + CLIPXY PCLR @ PIXEL
+    OVER 2R@ DROP + OVER R@ - CLIPXY PCLR @ PIXEL
+    OVER 2R@ DROP - OVER R@ - CLIPXY PCLR @ PIXEL
+    OVER R@ + OVER 2R@ DROP + CLIPXY PCLR @ PIXEL
+    OVER R@ - OVER 2R@ DROP + CLIPXY PCLR @ PIXEL
+    OVER R@ + OVER 2R@ DROP - CLIPXY PCLR @ PIXEL
+    OVER R@ - OVER 2R@ DROP - CLIPXY PCLR @ PIXEL
+)
+
+: FCIRCLE  ( cx cy r clr -- )
+   TRUE FILLED ! CIRCLE FALSE FILLED ! ;
+
+( ********** BEZIER **********)
+5 CONSTANT BSTEP  ( Bezier step)
+VARIABLE BX1
+VARIABLE BY1
+VARIABLE BCX
+VARIABLE BCY
+VARIABLE BX2
+VARIABLE BY2
+VARIABLE BPREVX
+VARIABLE BPREVY
+
+: INTERPOLATE  ( from to idx -- pos )
+   >R OVER - R> * 100 / + ;
+
+( Test: 50 300 150 80 300 200 RED BEZIERQ)
+: BEZIERQ  ( x1 y1 cx cy x2 y2 clr )
+    PCLR ! BY2 ! BX2 ! BCY ! BCX ! BY1 ! BX1 !
+    BX1 @ BPREVX ! BY1 @ BPREVY !
+    100 0 
+    DO 
+     ( The green line)
+      BX1 @ BCX @ I INTERPOLATE  ( xa )
+      BCX @ BX2 @ I INTERPOLATE  ( xa xb )
+      BY1 @ BCY @ I INTERPOLATE  ( xa xb ya )
+      BCY @ BY2 @ I INTERPOLATE  ( xa xb ya yb )
+     ( The black dot)
+      I INTERPOLATE              ( xa xb y )
+      ROT ROT I INTERPOLATE SWAP ( x y )
+      BPREVX @ BPREVY @ 2SWAP DUP BPREVY ! OVER BPREVX ! PCLR @ ZXLINE
+    BSTEP +LOOP 
+    BPREVX @ BPREVY @ BX2 @ BY2 @ PCLR @ ZXLINE ;
+
+VARIABLE BCX2
+VARIABLE BCY2
+VARIABLE BIVAR
+VARIABLE BXB
+VARIABLE BYB
+
+( Test: 50 300 80 100 210 80 300 200 RED BEZIERC)
+: BEZIERC  ( x1 y1 cx1 cy1 cx2 cy2 x2 y2 clr )
+    PCLR ! BY2 ! BX2 ! BCY2 ! BCX2 ! BCY ! BCX ! BY1 ! BX1 !
+    BX1 @ BPREVX ! BY1 @ BPREVY !
+    100 0 
+    DO 
+     ( The green lines)
+      BX1 @ BCX @ I INTERPOLATE   ( xa )
+      BCX @ BX2 @ I INTERPOLATE   ( xa xb )
+      BY1 @ BCY @ I INTERPOLATE   ( xa xb ya )
+      BCY @ BY2 @ I INTERPOLATE   ( xa xb ya yb )
+      BCX2 @ BX2 @ I INTERPOLATE  ( xa xb ya yb xc )
+      BCY2 @ BY2 @ I INTERPOLATE  ( xa xb ya yb xc yc )
+      I BIVAR !
+     ( The blue line)
+      2>R 2>R DUP BXB ! BIVAR @ INTERPOLATE ( xm )      ( R: xc yc ya yb )
+      2R> DUP BYB ! BIVAR @ INTERPOLATE     ( xm ym )   ( R: xc yc )
+      BXB @ 2R> >R BIVAR @ INTERPOLATE SWAP ( xm xn ym )    ( R: yc )
+      BYB @ R> BIVAR @ INTERPOLATE          ( xm xn ym yn ) ( R: )
+     ( The black dot)
+      I INTERPOLATE              ( xm xn y )
+      ROT ROT I INTERPOLATE SWAP ( x y )
+      BPREVX @ BPREVY @ 2SWAP DUP BPREVY ! OVER BPREVX ! PCLR @ ZXLINE
+    BSTEP +LOOP 
+    BPREVX @ BPREVY @ BX2 @ BY2 @ PCLR @ ZXLINE ;
+
+VARIABLE RETADDR
+VARIABLE BKGCLR
+VARIABLE VARUP   ( bl)
+VARIABLE VARDN   ( bh)
+
+( States)
+0 CONSTANT STTOBEG        ( StateToBeginningOfRowTillBkgClr)
+1 CONSTANT STPUTPX        ( StatePutPixel)
+2 CONSTANT STCHKUP        ( StateCheckUp)
+3 CONSTANT STSRUP         ( StateStoreUp)
+4 CONSTANT STCHKDN        ( StateCheckDown)
+5 CONSTANT STSRDN         ( StateStoreDown)
+6 CONSTANT STCHKRT        ( StateCheckRight)
+7 CONSTANT STCHKSP        ( StateCheckStackPointer)
+8 CONSTANT STEXIT         ( StateExit)
+
+VARIABLE STATE
+VARIABLE RTMP
+
+( Goes towards beginning of row until bkgclr is not found)
+: TOBEG  ( addr -- addr- )
+   BEGIN DUP 2- W@ BKGCLR @ = IF 2- FALSE ELSE TRUE THEN UNTIL ; 
+   
+: PUTPX  ( addr -- )
+   PCLR @ SWAP W! ;
+
+( Prev row contains bkgclr?)
+: PREVROW?  ( addr -- flag )
+   SCRW 2* - W@ BKGCLR @ = ;
+
+( Next row contains bkgclr?)
+: NEXTROW?  ( addr -- flag )
+   SCRW 2* + W@ BKGCLR @ = ;
+
+( Next pixel to the right contains bkgclr?)
+: NEXTPX?  ( addr -- flag )
+   2+ W@ BKGCLR @ = ;
+
+( using: returnaddrvalue[1], memaddr[16], clrBkg[4], clrPut[1], bl[4], bh[4], returnstackforstoringpositions)
+( Can paint concave shape) ( Does not check screen-borders, so the area needs to be limited by lines)
+( Test with polygon:)
+( PAGE 150 270  180 350  50 600  300 500  450 600  400 220  350 290  270 300 63488 8 POLY INVSCR)
+( 200 400 2016 PAINT)
+( Simple test:)
+( PAGE 400 200 100 600 800 700 63488 3 POLY INVSCR)
+( 400 300 2016 PAINT INVSCR)
+: PAINT  ( x y clr -- )
+   PCLR ! 2DUP CHKXY INVERT IF 2DROP EXIT THEN 
+   GETMEMADDR     ( addr ) 
+   R@ RETADDR ! DUP W@ BKGCLR ! 
+   0 VARUP ! 0 VARDN !
+   STTOBEG STATE !
+   BEGIN 
+     STATE @
+     CASE 
+       STTOBEG OF RTMP ! TOBEG STPUTPX STATE ! RTMP @ ENDOF 
+       STPUTPX OF RTMP ! DUP PUTPX STCHKUP STATE ! RTMP @ ENDOF 
+       STCHKUP OF RTMP ! DUP PREVROW? IF STSRUP STATE ! ELSE 0 VARUP ! STCHKDN STATE ! THEN RTMP @ ENDOF 
+       STSRUP  OF RTMP ! VARUP @ 0 = IF 255 VARUP ! DUP SCRW 2* - >R THEN STCHKDN STATE ! RTMP @ ENDOF 
+       STCHKDN OF RTMP ! DUP NEXTROW? IF STSRDN STATE ! ELSE 0 VARDN ! STCHKRT STATE ! THEN RTMP @ ENDOF 
+       STSRDN  OF RTMP ! VARDN @ 0 = IF 255 VARDN ! DUP SCRW 2* + >R THEN STCHKRT STATE ! RTMP @ ENDOF 
+       STCHKRT OF RTMP ! DUP NEXTPX? IF 2+ STPUTPX STATE ! ELSE STCHKSP STATE ! THEN RTMP @ ENDOF 
+       STCHKSP OF RTMP ! RETADDR @ R@ <> IF DUP R@ SWAP U>= IF 0 VARDN ! ELSE 0 VARUP ! THEN DROP R> STTOBEG STATE ! ELSE STEXIT STATE ! THEN RTMP @ ENDOF 
+     ENDCASE
+   STATE @ STEXIT = UNTIL DROP ;
+
+( **********RECT**********)
+: GETBKGCLR  ( -- bkgclr ) 
+   BKGFGCLR @ [ HEX ] FFFF [ DECIMAL ] AND ;
+
+( Clears a rect in SCRBUFF)
+: CLEARRECTSCR  ( x y w h -- )
+   2OVER CHKXY INVERT IF 2DROP 2DROP EXIT THEN 
+   2OVER 2OVER >R ROT + SCRW U>= SWAP R> + SCRH U>= OR 
+   IF 2DROP 2DROP EXIT THEN 
+   2>R GETMEMADDR 2R>            ( addr w h ) 
+   0 DO         ( height-loop)
+     2DUP GETBKGCLR FILLW      ( needs: addr u word)
+     SWAP SCRW 2* + SWAP      ( addrNextLine w )
+   LOOP 2DROP ;
+
+( Clears rect in memory)
+: CLEARRECT  ( addr w h -- )
+   0 DO         ( height-loop)
+     2DUP GETBKGCLR FILLW      ( needs: addr u word)
+     SWAP OVER 2* + SWAP         ( addrNextLine w )
+   LOOP 2DROP ;
+
+VARIABLE MEMADDR
+
+( Save rectangle from screenbuffer to buffer at addr)
+( Useful for saving background of a sprite)
+: SAVERECT  ( x y w h addr -- )
+   MEMADDR ! 2>R GETMEMADDR 2R>  ( scraddr w h ) 
+   0 DO         ( height-loop)
+     2DUP                        ( scraddr w scraddr w )
+     MEMADDR @ SWAP MOVEW        ( scraddr w )  ( MOVEM: memaddr scraddr w)
+     SWAP SCRW 2* + SWAP      ( scraddrNextLine w )
+     DUP 2* MEMADDR +!
+   LOOP 2DROP ;
+
+( If we scroll e.g. to the right, we decrease the width,)
+( but PUTRECT would add the decreased width to get to next line,)
+( but we need width+decrement)
+VARIABLE WEXTRA 
+VARIABLE WEXTRASAVED
+VARIABLE WEXTRASAVED2
+
+( QOI: drawimg !? It draws from RGBA image)
+( put rectangle to screenbuffer from addr)
+( Useful for putting back the background under a sprite)
+: PUTRECT  ( x y w h addr -- )
+   MEMADDR ! 2>R GETMEMADDR 2R>  ( scraddr w h ) 
+   0 DO         ( height-loop)
+     2DUP                        ( scraddr w scraddr w )
+     >R MEMADDR @ SWAP R> MOVEW  ( scraddr w )  ( MOVEW: memaddr scraddr w)
+     SWAP SCRW 2* + SWAP      ( scraddrNextLine w )
+     DUP 2* WEXTRA @ 2* + MEMADDR +!
+   LOOP 2DROP ;
+
+VARIABLE MEMROWADDR
+
+( Transparent)
+: PUTRECTT  ( x y w h addr -- )
+   MEMROWADDR ! 2>R GETMEMADDR 2R>  ( scraddr w h ) 
+   GETBKGCLR BKGCLR !
+   0 DO         ( height-loop)
+     MEMROWADDR @ MEMADDR !
+     2DUP                        ( scraddr w scraddr w )
+     0 DO
+       MEMADDR @ W@ DUP BKGCLR @ <> IF OVER W! ELSE DROP THEN 
+       2+ 2 MEMADDR +!
+     LOOP DROP
+     SWAP SCRW 2* + SWAP         ( scraddrNextLine w )
+     DUP 2* WEXTRA @ 2* + MEMROWADDR +!
+   LOOP 2DROP ;
+
+VARIABLE CURXSAVED
+VARIABLE CURYSAVED
+
+: SAVECUR  ( -- )
+   GET-XY CURYSAVED ! CURXSAVED ! ;
+
+: RESTORECUR  ( -- )
+   CURXSAVED @ CURYSAVED @ AT-XY ;
+
+: LCOLS*  ( col -- col*colcnt )
+   6 LSHIFT ;  ( 64 i.e. column-cnt)
+
+( Get character under the cursor)
+: GETCH  ( -- c )
+   SCRBUFF @ GET-XY LCOLS* + + C@ ;
+
+VARIABLE DELAY
+
+( The scrollout words first display the)
+( content of the rectangle then scroll it out)
+
+( Data of transparent scroll)
+( If TSCL is TRUE, do transparent scroll)
+VARIABLE TSCL FALSE TSCL !
+VARIABLE TADDR HEX 880000 DECIMAL TADDR !   ( default value)
+VARIABLE ORIGX
+VARIABLE ORIGY
+VARIABLE ORIGW
+VARIABLE ORIGH
+VARIABLE ORIGADDR  ( Not used!?)
+
+( Save original data)
+: SORIG  ( x y w h addr -- x y w h addr )
+   DUP ORIGADDR ! >R DUP ORIGH ! >R DUP ORIGW ! >R 
+   DUP ORIGY ! >R DUP ORIGX ! 
+   R> R> R> R> ;
+
+( Orig save rect)
+: OSAVERECT ( -- )
+   ORIGX @ ORIGY @ ORIGW @ ORIGH @ TADDR @ SAVERECT ;
+
+( Orig put rect)
+: OPUTRECT ( -- )
+   WEXTRA @ WEXTRASAVED2 ! 0 WEXTRA ! 
+   ORIGX @ ORIGY @ ORIGW @ ORIGH @ TADDR @ PUTRECT 
+   WEXTRASAVED2 @ WEXTRA ! ; 
+
+( Scroll out up)
+: SCLOUTU  ( x y w h addr msDelay -- )
+    0 WEXTRA !
+    DELAY !
+    TSCL @ IF SORIG OSAVERECT THEN 
+    OVER 1-
+    0 DO 
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      INVSCR
+      DELAY @ SLEEP 
+ (     2OVER 2OVER CLEARRECTSCR)  ( x y w h )   ( R: addr )
+      TSCL @ IF OPUTRECT THEN
+      1- OVER 2* R> +          ( h-=1, addr+=w*2) 
+    LOOP DROP 2DROP 2DROP ;
+
+: SCLOUTD  ( x y w h addr msDelay -- )
+    0 WEXTRA !
+    DELAY !
+    TSCL @ IF SORIG OSAVERECT THEN 
+    OVER 1-
+    0 DO 
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      INVSCR
+      DELAY @ SLEEP 
+(      2OVER 2OVER CLEARRECTSCR)  ( x y w h )   ( R: addr )
+      TSCL @ IF OPUTRECT THEN
+      1- 2>R 1+ 2R> R>         ( h-=1, y+=1)
+    LOOP DROP 2DROP 2DROP ;
+
+: SCLOUTR  ( x y w h addr msDelay -- )
+    0 WEXTRA !
+    DELAY !
+    TSCL @ IF SORIG OSAVERECT THEN 
+    >R OVER R> SWAP 1-
+    0 DO 
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      INVSCR
+      DELAY @ SLEEP 
+(      2OVER 2OVER CLEARRECTSCR)  ( x y w h )   ( R: addr )
+      TSCL @ IF OPUTRECT THEN
+      >R 1- 2>R 1+ 2R> R> R> 1 WEXTRA +!  ( w-=1, x+=1)
+    LOOP DROP 2DROP 2DROP 0 WEXTRA ! ;
+
+: SCLOUTL  ( x y w h addr msDelay -- )
+    0 WEXTRA !
+    DELAY !
+    TSCL @ IF SORIG OSAVERECT THEN 
+    >R OVER R> SWAP 1-
+    0 DO 
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      INVSCR
+      DELAY @ SLEEP 
+(      2OVER 2OVER CLEARRECTSCR)  ( x y w h )   ( R: addr )
+      TSCL @ IF OPUTRECT THEN
+      >R 1- R> R> 2+ 1 WEXTRA +!          ( w-=1, addr+=2)
+    LOOP DROP 2DROP 2DROP 0 WEXTRA ! ;
+
+VARIABLE TVAR
+
+( Scroll in up)
+: SCLINU  ( x y w h addr msDelay -- )
+    0 WEXTRA !
+    DELAY !
+    TSCL @ IF SORIG OSAVERECT THEN 
+    >R TVAR ! 1 2>R TVAR @ 1- + 2R> R>       ( y+=h-1, h=1)
+    TVAR @ ( 1-)
+    0 DO 
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      INVSCR
+      DELAY @ SLEEP 
+(      2OVER 2OVER CLEARRECTSCR)  ( x y w h )   ( R: addr )
+      TSCL @ IF OPUTRECT THEN
+      1+ 2>R 1- 2R> R>                ( y-=1, h+=1)
+    LOOP DROP 2DROP 2DROP ;
+
+: SCLIND  ( x y w h addr msDelay -- )
+    0 WEXTRA !
+    DELAY !
+    TSCL @ IF SORIG OSAVERECT THEN 
+    >R TVAR ! 1 OVER 2* R> SWAP TVAR @ 1- * +   ( h=1, addr+=[h-1]*2*w)
+    TVAR @ ( 1-)
+    0 DO 
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      INVSCR
+      DELAY @ SLEEP 
+(      2OVER 2OVER CLEARRECTSCR)  ( x y w h )   ( R: addr )
+      TSCL @ IF OPUTRECT THEN
+      1+ OVER 2* R> SWAP -      ( h+=1, addr-=2*w)
+    LOOP DROP 2DROP 2DROP ;
+
+: SCLINR  ( x y w h addr msDelay -- )
+    0 WEXTRA !
+    DELAY !
+    TSCL @ IF SORIG OSAVERECT THEN 
+    2>R TVAR ! 1 2R> TVAR @ 1- 2* +     ( w=1, addr+=[w-1]*2)
+    TVAR @ DUP 1- WEXTRA ! ( 1-)   ( wextra=origw-w)
+    0 DO 
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      INVSCR
+      DELAY @ SLEEP 
+(      2OVER 2OVER CLEARRECTSCR)  ( x y w h )   ( R: addr )
+      TSCL @ IF OPUTRECT THEN
+      >R 1+ R> R> 2- -1 WEXTRA +!        ( w+=1, addr-=2)
+    LOOP DROP 2DROP 2DROP 0 WEXTRA ! ;
+
+: SCLINL  ( x y w h addr msDelay -- )
+    0 WEXTRA !
+    DELAY !
+    TSCL @ IF SORIG OSAVERECT THEN 
+    2>R TVAR ! 1 2>R TVAR @ 1- + 2R> 2R>       ( w=1, x+=w-1)
+    TVAR @ DUP 1- WEXTRA ! ( 1-)   ( wextra=origw-w)
+    0 DO 
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      INVSCR
+      DELAY @ SLEEP 
+(      2OVER 2OVER CLEARRECTSCR)  ( x y w h )   ( R: addr )
+      TSCL @ IF OPUTRECT THEN
+      >R 1+ 2>R 1- 2R> R> R> -1 WEXTRA +!      ( x-=1, w+=1)
+    LOOP DROP 2DROP 2DROP 0 WEXTRA ! ;
+
+VARIABLE IVAR 
+VARIABLE BEGADDR 
+VARIABLE HVAR 
+
+( Scroll out up wrap)
+: SCLOUTUW  ( x y w h addr msDelay -- )
+    0 WEXTRA !
+    DELAY !
+    TSCL @ IF SORIG OSAVERECT THEN 
+    DUP BEGADDR ! OVER HVAR ! 
+  BEGIN
+    HVAR @ 1-
+    0 DO 
+      I IVAR !
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      IVAR @ 0= 
+      IF INVSCR
+      ELSE
+      ( below: x y+[origh-I] w I origAddr )
+        2OVER HVAR @ IVAR @ - + 2OVER DROP IVAR @ BEGADDR @  
+        TSCL @ IF PUTRECTT ELSE PUTRECT THEN INVSCR     ( x y w h )   ( R: addr )
+      THEN
+      DELAY @ SLEEP 
+      KEY 32 = DISCARD IF R> UNLOOP DROP 2DROP 2DROP EXIT THEN 
+      TSCL @ IF OPUTRECT THEN
+      1- OVER 2* R> +          ( h-=1, addr+=w*2) 
+    LOOP 
+    ( restore original values)
+    2DROP HVAR @ BEGADDR @
+  AGAIN ;
+
+VARIABLE YORIG
+
+: SCLOUTDW  ( x y w h addr msDelay -- )
+    0 WEXTRA !
+    DELAY !
+    TSCL @ IF SORIG OSAVERECT THEN 
+    2>R >R DUP YORIG ! R> 2R>
+    OVER HVAR ! 
+  BEGIN
+    HVAR @ 1-
+    0 DO 
+      I IVAR !
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      IVAR @ 0= 
+      IF INVSCR
+      ELSE
+      ( below: x origy w I begaddr+[h-I]*w*2 )
+        2OVER DROP YORIG @ 2OVER DROP DUP 2* HVAR @ IVAR @ - * R@ + IVAR @ SWAP 
+        TSCL @ IF PUTRECTT ELSE PUTRECT THEN INVSCR     ( x y w h )   ( R: addr )
+      THEN
+      DELAY @ SLEEP 
+      KEY 32 = DISCARD IF R> UNLOOP DROP 2DROP 2DROP EXIT THEN 
+      TSCL @ IF OPUTRECT THEN
+      1- 2>R 1+ 2R> R>         ( h-=1, y+=1)
+    LOOP 
+    ( restore original values)
+    >R DROP >R DROP YORIG @ R> HVAR @ R>
+  AGAIN ;
+
+VARIABLE XORIG
+VARIABLE WVAR
+
+: SCLOUTRW  ( x y w h addr msDelay -- )
+    DELAY !
+    TSCL @ IF SORIG OSAVERECT THEN 
+    2>R 2>R DUP XORIG ! 2R> DUP WVAR ! 2R>    ( save x and w)
+  BEGIN
+    0 WEXTRA !
+    WVAR @ 1-
+    0 DO 
+      I IVAR !
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      IVAR @ 0=
+      IF INVSCR  
+      ELSE 
+        WEXTRA @ WEXTRASAVED !
+        WVAR @ WEXTRASAVED @ - WEXTRA !
+        ( below: xorig y ivar h addr+[wvar-ivar]*2 )
+        2OVER >R DROP XORIG @ R> 2OVER >R DROP IVAR @ R> R@ WVAR @ IVAR @ - 2* + 
+        TSCL @ IF PUTRECTT ELSE PUTRECT THEN INVSCR     ( x y w h )   ( R: addr )
+        WEXTRASAVED @ WEXTRA !
+      THEN 
+      DELAY @ SLEEP 
+      KEY 32 = DISCARD IF R> UNLOOP DROP 2DROP 2DROP EXIT THEN 
+      TSCL @ IF OPUTRECT THEN
+      >R 1- 2>R 1+ 2R> R> R> 1 WEXTRA +!  ( w-=1, x+=1)
+    LOOP 
+    ( restore original values)
+    2>R DROP WVAR @ 2>R DROP XORIG @ 2R> 2R> 
+  AGAIN ;
+
+: SCLOUTLW  ( x y w h addr msDelay -- )
+    DELAY !
+    TSCL @ IF SORIG OSAVERECT THEN 
+    >R OVER WVAR ! R> DUP BEGADDR !       ( save w and addr)
+  BEGIN
+    0 WEXTRA !
+    WVAR @ 1-
+    0 DO 
+      I IVAR !
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      IVAR @ 0=
+      IF INVSCR  
+      ELSE 
+        WEXTRA @ WEXTRASAVED !
+        WVAR @ WEXTRASAVED @ - WEXTRA !
+        ( below: x+[wvar-ivar] y ivar h addr )
+           2OVER >R WVAR @ IVAR @ - + R> 2OVER >R DROP IVAR @ R> BEGADDR @ 
+        TSCL @ IF PUTRECTT ELSE PUTRECT THEN INVSCR     ( x y w h )   ( R: addr )
+        WEXTRASAVED @ WEXTRA !
+      THEN 
+      DELAY @ SLEEP 
+      KEY 32 = DISCARD IF R> UNLOOP DROP 2DROP 2DROP EXIT THEN 
+      TSCL @ IF OPUTRECT THEN
+      >R 1- R> R> 2+ 1 WEXTRA +!          ( w-=1, addr+=2)
+    LOOP 
+    ( restore original values)
+    DROP >R DROP WVAR @ R> BEGADDR @ 
+  AGAIN ;
+
+VARIABLE SCLLIM
+
+( scrolls from side-to-side, switches direction at limit-distance)
+: SCLSIDES  ( x y w h addr msDelay limit -- )
+    0 WEXTRA !
+    SCLLIM !
+    DELAY !
+    TSCL @ IF SORIG OSAVERECT THEN 
+ ( from scloutr)
+    SCLLIM @ 0 DO 
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      INVSCR
+      DELAY @ SLEEP 
+(      2OVER 2OVER CLEARRECTSCR)  ( x y w h )   ( R: addr )
+      TSCL @ IF OPUTRECT THEN
+      >R 1- 2>R 1+ 2R> R> R> 1 WEXTRA +!  ( w-=1, x+=1)
+    LOOP 
+ ( back to center)
+    SCLLIM @ 0 DO 
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      INVSCR
+      DELAY @ SLEEP 
+(      2OVER 2OVER CLEARRECTSCR)  ( x y w h )   ( R: addr )
+      TSCL @ IF OPUTRECT THEN
+      >R 1+ 2>R 1- 2R> R> R> -1 WEXTRA +!  ( w+=1, x-=1)
+    LOOP 
+ ( from scloutl)
+    SCLLIM @ 0 DO 
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      INVSCR
+      DELAY @ SLEEP 
+(      2OVER 2OVER CLEARRECTSCR)  ( x y w h )   ( R: addr )
+      TSCL @ IF OPUTRECT THEN
+      >R 1- R> R> 2+ 1 WEXTRA +!          ( w-=1, addr+=2)
+    LOOP 
+ ( back to center)
+    SCLLIM @ 0 DO 
+      >R 2OVER 2OVER R@   ( x y w h x y w h addr )  ( R: addr )
+      TSCL @ IF PUTRECTT ELSE PUTRECT THEN      ( x y w h )   ( R: addr )
+      INVSCR
+      DELAY @ SLEEP 
+(      2OVER 2OVER CLEARRECTSCR)  ( x y w h )   ( R: addr )
+      TSCL @ IF OPUTRECT THEN
+      >R 1+ R> R> 2- -1 WEXTRA +!          ( w+=1, addr-=2)
+    LOOP DROP 2DROP 2DROP 0 WEXTRA ! ;
+
+

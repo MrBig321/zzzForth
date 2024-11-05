@@ -1,0 +1,81 @@
+( Cooperative multitasking, Round-Robin scheduling. Maximum 100 tasks can be executed at a time.)
+( Uses only one core or CPU.)
+
+( The address of the caller gets pushed onto the OS-stack. If we switch to the stack of another task in a function [e.g. PAUSE in case of cooperative multitasking; Timer-IRQ in case of Preemptive multitasking], the ret instruction [in PAUSE] will jump to the address that is in the stack we switched to. There is no need for synchronization with cooperative multitasking.)
+
+( Ctrl-m stops [reinits the system, prints welcome message] the main-task.
+Ctrl-c stops the currently running non-main-task. It is useful if a task is in a forever loop and calls PAUSE.
+There is a counter in Pit-irq, which gets cleared in PAUSE. If this counter reaches 10-seconds, then the system will be reinited [jumps to WelcomeMsg]. This is useful if a task is in a forever-loop and doesn't call PAUSE, because no keyboard will be read. If the task is in a forever-loop but calls PAUSE, then it can be stopped by pressing Ctrl-c [or Ctrl-m for the Main-task].
+The Main-task calls PAUSE in the loop it reads the keyboard [_accept function in forth.asm], so we don't need to call PAUSE from the command-line.
+We only need to call PAUSE in the Main-task if we create a word that for example has a 1000000 DO-LOOP cycle and we want to switch tasks in this loop.
+There is a dummy-task too. If the Main-task is the only task, and it calls SLEEP, then we can switch to the dummy-task.
+
+Things to improve:
+- if a task is stopped by Ctrl-c, then prompt is not printed. We need to press ENTER to have it printed
+- If that 10 seconds expires we could reinit the system only if the Main-task is the active one, otherwise we could just kill the current task)
+
+( Currently we have only the main task running, and it creates two variables: TA and TB. 
+The taskid gets stored in a variable created by TASK. Taskid is from 1 to 100. 
+TASK pushes the taskid to the param-stack but we don't need it now, so we throw it away. It's useful if we want to KILL the task )
+TASK TA .
+TASK TB .
+
+( We create two words: ALET and BLET. These words print 'A' and 'B' in a forever loop.
+ACTIVATE needs a taskid on param-stack. ACTIVATE stores the current task in its taskstruct and creates a new task, which will be executed immediately.
+PAUSE switches tasks and TERMINATE destroys the task by setting the state of its taskstruct to UNUSED.
+Note that here TERMINATE will never get executed.)
+: ALET TA @ ACTIVATE BEGIN ." A" PAUSE AGAIN TERMINATE ;
+: BLET TB @ ACTIVATE BEGIN ." B" PAUSE AGAIN TERMINATE ;
+
+( The main task executes the two tasks)
+ALET BLET
+
+( A and B letters will be printed and by pressing ENTER, the prompt will be printed by the main task too)
+
+( A terminated task(e.g. ALET) can be started again by: 
+TASK TA .
+It sets the state of the task to PREPARED from UNUSED, and copies its name (TA) to the task-buffer, then:
+ALET
+
+A variable created by TASK could be used again after TERMINATE by using: GETTBUFF ( -- taskid addroftaskbuff).
+GETTBUFF . TA !
+but it doesn't set it to PREPARED and doesn't copy the name.
+)
+
+The main-task can be stopped with ctr-m (reinitializes everything, prints welcome-msg).
+All the other tasks can be stopped by pressing ctrl-c.
+
+************************************************************************************
+
+TASK TA .
+TASK TB .
+
+: ALET TA @ ACTIVATE BEGIN ." A" 100 SLEEP AGAIN TERMINATE ;
+: BLET TB @ ACTIVATE BEGIN ." B" PAUSE AGAIN TERMINATE ;
+
+ALET BLET
+
+************************************************************************************
+
+TASK TA .
+TASK TB .
+
+: ALET TA @ ACTIVATE BEGIN ." A" PAUSE AGAIN TERMINATE ;
+: BLET TB @ ACTIVATE ." B" 2000 SLEEP TA @ KILL TERMINATE ;			( TERMINATE will be executed)
+
+ALET BLET
+
+
+************************************************************************************
+
+TASK TA .
+TASK TB .
+
+: ALET TA @ ACTIVATE BEGIN ." A" PAUSE AGAIN TERMINATE ;
+: BLET TB @ ACTIVATE BEGIN ." B" 1000 SLEEP TA @ SUSPEND ." B" 3000 SLEEP TA @ RESUME AGAIN TERMINATE ;
+
+ALET BLET
+
+
+
+

@@ -1,0 +1,38 @@
+( 16-bit trig functions)
+
+( BLOCK X)
+DECIMAL
+
+10000 CONSTANT 10K ( The scaling constant)
+VARIABLE XS        ( The square of the scaled angle)
+
+( a b -- m   | m=10000-ax*x/b ... a common term in the series)
+: L   XS @ SWAP / NEGATE 10K */ 10K + ;
+
+( theta -- 10000*SIN  | -15708 < theta < 15708  radians*10000)
+: (SIN)  DUP ( save x)  DUP 10K */ XS ! ( save x*x)
+   10K ( Put 1*10000 on stack to start series)
+   72 L  42 L  20 L  6 L ( Compute the series terms)
+   10K */ ( Finaly multiply by the saved x) ;
+( Note: 1/10000 of a radian is close to 0.0057 degree or about 21 arc seconds ... a very small angle)
+
+( BLOCK X+1)
+( SINE, COSINE and TANGENT for whole degree angles)
+
+( theta -- theta  | Reduce Y-axis symmetry. 0-180 to 0-90-0)
+: ?MIRROR  DUP 90 > IF 180 SWAP - THEN ;
+
+( theta [any] -- theta -90 to 90  | angle range reduction)
+: REDUCE  360 MOD DUP 0< IF 360 + THEN DUP 180 <
+   IF ( 0-180) ?MIRROR ELSE 180 - ?MIRROR NEGATE THEN ;
+
+( theta -- 10000*SIN or COS  | Any angle in whole degrees)
+: SIN  REDUCE 17453 100 */ ( deg. to rad*10000) (SIN) ;
+: COS  360 MOD ( prevents possible overflow) 90 SWAP - SIN ;
+
+( theta -- 100*TAN   | TAN set to +-30000 for +-90 degrees)
+: TAN  DUP SIN SWAP COS ?DUP IF 10K SWAP */ ELSE 3 * THEN ;
+( ORIGINAL VERSION:)
+( : TAN  DUP SIN SWAP COS ?DUP IF 100 SWAP */ ELSE 3 * THEN ;)
+
+

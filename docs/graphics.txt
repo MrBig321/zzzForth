@@ -1,0 +1,46 @@
+Many features:
+- Line (ZXLINE)
+- Sutherland-Cohen line-clipping algorithm
+- Polygon (can be filled)
+- Sutherland-Hodgman polygon clipping
+- Circle (can be filled)
+- Paint (floodfill)
+- BezierQ
+- BezierC
+- Scrolling of rectangular areas
+- QOI images (decode/code)
+- 3D (fixed point math) (e.g. rotating cubes)
+See fthsrc/Graphics/   
+( Note that PAUSE should be removed from FORTH-src, if MULTITASKING_DEF is not defined in assembly)
+
+( *******An example*******)
+: WAITSP BEGIN PAUSE KEY 32 = UNTIL DISCARD ;
+PAGE
+-30 100 550 200 800 700 2016 3 FPOLY 
+900 512 200 63488 FCIRCLE 
+100 100 500 200 600 400 150 500 63488 4 FPOLY 
+10 700 300 650 100 400 2016 3 POLY 
+800 200 100 2016 CIRCLE 
+3 30 AT-XY S" Press SPACE" TYPE 
+INVSCR WAITSP
+( *******End of An example*******)
+
+
+ZXLINE (algorithm, from ROM of ZX-Spectrum):
+First we select the starting point. Next we check that the end-point in which direction and how far it is from the starting point, 
+for x and y. Basically we differentiate between two types of lines, and we need to separate them from each other right at the beginning of 
+the code. The difference comes from their direction, because the core of the algorithm is that it increments one of the coordinates with 
+one in every step and calculates the other one based on it. If we would not differentiate between the two types of lines, then it could 
+happen that in case of a line of (0,0)-(10,100), we would incement the x-coordinate with one and calculate the y. 
+In this case only 10 points would appear from the line. So, before drawing the line, we have to decide if the x-difference or 
+the y-difference is the greater one of the line. We can do that with a subtraction and comparison. 
+In the example above, the x-difference is 10 and the y-difference is 100. We always select the greater one to make steps, 
+this way all every point of the line will be drawn for sure. It is also important that the end-point of the line is in which direction 
+from its starting-point. We need to decrease it, if a coordinate is smaller.
+The method of computing the points of the line is pretty simple. We only need to add to a register in every step the smaller 
+coordinate-component and then compare it with the greater one. If it is smaller, then there is no side-step, if greater, 
+then we subtract it from the register and make a step sideways too. This way by the time we will have reached the end of the line 
+(which we set with a cycle to greatercomponent+1), we will get exactly to the given point.
+Bresenham !?
+
+

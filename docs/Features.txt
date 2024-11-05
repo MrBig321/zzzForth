@@ -1,0 +1,25 @@
+zzzFORTH (also called ZFOS) Written in 32-bit Intel-assembly and FORTH
+The best FORTH tutorial is "Starting FORTH by Leo Brodie":
+https://www.forth.com/starting-forth/
+
+- Resolutions: 1024*768*16 or 640*480*16 (for Eee PC) 
+- IDE hard disk driver
+- Multitasking (but only one core or CPU is used)
+- USB(EHCI, XHCI) driver (can read/write files from/to pendrive formatted to FAT32) 
+- HDAUDIO driver (very limited)
+- Can boot from Floppy/HD/USB-MSD
+In FORTH (in ZFOS/fthsrc/):
+- BLOCK
+- HEXVW, HEXED
+- TXTVW, TXTED
+- SIN, COS, TAN, SQRT (fixed point math)
+- LINE, POLYGON(can be filled), CIRCLE(can be filled), PAINT
+- Sutherland-Cohen line-clipping 
+- Sutherland-Hodgman polygon clipping
+- BEZIERQ, BEZIERC
+- QOI image format (decode/code) supported
+- 3D (fixed point math) (e.g. rotating cubes)
+
+See ZFOS/docs for details
+
+

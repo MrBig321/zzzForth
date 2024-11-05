@@ -1,0 +1,15 @@
+USBENUM .                               ( 1 is returned)
+1 USBFSINIT . . . .
+HEX
+20000000 USBFSREAD qoi.txt" . .         ( 3155 returned as size)
+20000000 3155 loadm 
+HEX
+20000000 USBFSREAD cubesSmall.qoi" . .  ( 1CCED returned as size)
+20000000 QOIINFO                        ( prints width and height of image: 400, 300 ; also shows the existence of an Alpha channel)
+22000000 20000000 1CCED QOID 
+HEX
+22000000 DECIMAL 0 0 400 300 1 DRAWIMG INVSCR
+
+NOTE: If the alpha-byte is zero, it means that that pixel is fully transparent.
+
+

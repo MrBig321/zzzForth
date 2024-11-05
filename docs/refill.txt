@@ -1,0 +1,12 @@
+Blocks:
+1.  1 LIST
+2.  Enter code of BIGF (At the end "0 BLK !")
+3.  F6 (Update)
+4.  Esc
+5.  SAVE-BUFFERS
+6.  In Cmd-Line: "1 BLK !"
+
+We can use several blocks this way, but in the last one (or in the one that uses LOAD) have the line "0 BLK !" to stop REFILL.
+Problem: as many "ok" in Cmd-Line as many blocks get loaded.
+
+

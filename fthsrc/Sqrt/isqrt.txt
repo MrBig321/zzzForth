@@ -1,0 +1,36 @@
+( Computes the 32bit integer square root of a 32bit positive number, no fraction) 
+( Algorithm-author: Christophe Meessen 1993)
+
+DECIMAL
+
+: ISQRT ( u -- ) ( u is r)
+  1073741824 2DUP SWAP 
+( r b b r) > 
+   IF 
+   ( r b) ( R: )
+    BEGIN 2 RSHIFT 2DUP >= 
+    UNTIL
+   THEN
+( r b )  ( R: )
+   0 >R         ( r b)  ( R: q)
+   DUP 0> 
+   IF    ( while-loop)
+( r b)  ( R: q)
+     BEGIN
+       DUP R@ + ( r b b+q) ( R: q)
+       R> 1 RSHIFT ( r b b+q q)
+       >R >R OVER ( r b r) ( R: q b+q)
+       R@ >=      ( r b flag) ( R: q b+q)
+       IF SWAP R> - ( b r) ( R: q)
+         OVER R> SWAP + >R ( b r) ( R: q)
+         SWAP 0 >R ( dummy value for b+q)
+       THEN        ( r b ) ( R: q b+q)
+       R> DROP
+       2 RSHIFT ( r b) ( R: q)
+       DUP 0= 
+     UNTIL
+   THEN
+   2DROP R> ;
+
+
+

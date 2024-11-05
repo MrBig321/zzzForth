@@ -1,0 +1,157 @@
+( Sutherland-Hodgman polygon clipping)
+( We use fixed-point, so we multiply the coordinates with a value in order to have greater precision)
+( Of course, we divide the result with the same value)
+( We use DCells in CINTERSECT)
+
+DECIMAL 
+
+: KEY? KEYW DISCARD DROP ;         ( for testing)
+
+: PRLIST  ( addr cnt -- )
+   2* 0 DO DUP ? CELL+ LOOP DROP ; ( for testing)
+
+VARIABLE CP1X
+VARIABLE CP1Y
+VARIABLE CP2X
+VARIABLE CP2Y
+VARIABLE SPX
+VARIABLE SPY
+VARIABLE EPX
+VARIABLE EPY
+
+VARIABLE DC1
+VARIABLE DC2
+VARIABLE DP1
+VARIABLE DP2
+
+3  CONSTANT MINPCNT
+64 CONSTANT MAXPCNT	    ( max pairs of coords, i.e. [x, y])
+( Clip Polygon Coords)
+CREATE CPYCS MAXPCNT 2* CELLS ALLOT   ( word-size!?)
+VARIABLE CPYCNT
+( Subject Polygon Coords)
+CREATE SPYCS MAXPCNT 2* CELLS ALLOT   ( word-size!?)
+VARIABLE SPYCNT
+( Output Polygon Coords)
+CREATE OPYCS MAXPCNT 2* CELLS ALLOT   ( word-size!?)
+VARIABLE OPYCNT 
+( Intput Polygon Coords)
+CREATE IPYCS MAXPCNT 2* CELLS ALLOT   ( word-size!?)
+VARIABLE IPYCNT 
+
+: PINSIDE  ( px py -- flag )
+  ( [cp2x-cp1x]*[py-cp1y] > [cp2y-cp1y]*[px-cp1x])
+   CP1Y @ - CP2X @ CP1X @ - * SWAP CP1X @ - CP2Y @ CP1Y @ - * > ;
+
+: CPDIFF  ( -- )
+   CP1X @ CP2X @ - DC1 ! CP1Y @ CP2Y @ - DC2 ! ;
+
+: SPEPDIFF  ( -- )
+  SPX @ EPX @ - DP1 ! SPY @ EPY @ - DP2 ! ; 
+
+: CPCP  ( -- n1 )
+  CP1X @ CP2Y @ * CP1Y @ CP2X @ * - ; 
+
+: SPEPCP  ( -- n2 )
+  SPX @ EPY @ * SPY @ EPX @ * - ;  
+
+: DCDPCP  ( -- rn3 )
+  DC1 @ DP2 @ * DC2 @ DP1 @ * - ; 
+
+: CINTERSECT ( -- cpx cpy )
+( dc=[cp1x-cp2x, cp1y-cp2y]) 
+( dp=[spx-epx, spy-epy]) 
+( n1=cp1x*cp2y-cp1y*cp2x) 
+( n2=spx*epy-spy*epx) 
+( n3=1/[dc[0]*dp[1]-dc[1]*dp0])  ( we compute the reciprocal and divide by it to avoid using the FPU)
+( [cpx,cpy]=[[n1*dp[0] - n2*dc[0]] / rn3, [n1*dp[1] - n2*dc[1]] / rn3])
+  CPDIFF SPEPDIFF CPCP SPEPCP >R DCDPCP >R         ( R: n2 rn3 )
+  DUP DP1 @ M* 2R@ DROP DC1 @ M* D- R@ SM/REM NIP SWAP DP2 @ M* 2R@ DROP DC2 @ M* D- 2R> NIP SM/REM NIP ; 
+
+: VMUL  ( n -- m )
+   4 LSHIFT ; 
+
+: VDIV  ( n -- m )
+   4 RSHIFT ; 
+
+( Store Coords with multiplication)
+: STCS   ( x1 y1 ... xn yn n addr -- )
+   OVER 2* CELLS + SWAP 2* 0 
+   DO 1 CELLS - DUP >R SWAP VMUL SWAP ! R> LOOP DROP ; 
+
+( Append to Output)
+: APPENDO  ( x y -- )
+   SWAP OPYCS OPYCNT @ 2* CELLS + DUP >R ! R> CELL+ ! 1 OPYCNT +! ; 
+
+: ETOS  ( -- )
+   EPX @ SPX ! EPY @ SPY ! ;
+
+: CP2TOCP1  ( -- )
+   CP2X @ CP1X ! CP2Y @ CP1Y ! ;
+
+: CPDATA  ( addrTo addrFrom cnt -- )
+   2* 0 DO DUP >R @ OVER ! CELL+ R> CELL+ LOOP 2DROP ;
+
+: CPSP2OP  ( -- )
+   OPYCS SPYCS SPYCNT @ DUP OPYCNT ! CPDATA ;
+
+: CPOP2IP  ( -- )
+   IPYCS OPYCS OPYCNT @ DUP IPYCNT ! CPDATA ;
+
+: GETLAST  ( addr cnt -- x y )
+   2* 1- CELLS + DUP @ SWAP 1 CELLS - @ SWAP ;
+
+: GETLASTCP  ( -- )
+   CPYCS CPYCNT @ GETLAST CP1Y ! CP1X ! ;
+
+: GETLASTIP  ( -- )
+   IPYCS IPYCNT @ GETLAST SPY ! SPX ! ;
+
+( Copies values from array to stack with division)
+: O2STACK  ( -- )
+   OPYCS OPYCNT @ 2* 0 DO DUP @ VDIV SWAP CELL+ LOOP DROP OPYCNT @ ;
+
+( n and m are count of coordinate-pairs: x,y is 1)
+: PCLIP  ( x1 y1 ... xn yn n xc1 yc1 ... xck yck k -- xcl1 ycl1 xcl2 ycl2 ... xclm yclm m )
+   DUP MINPCNT < OVER MAXPCNT >= OR ABORT" PCLIP: count of vertices too big!"
+  ( put vertices to arrays with multiplication)
+   DUP CPYCNT ! CPYCS STCS  
+   DUP SPYCNT ! SPYCS STCS  
+  ( outputList = subjectPolygon)
+   CPSP2OP
+  ( cp1 = clipPolygon[-1])
+   GETLASTCP
+  ( for clipVertex in clipPolygon:)
+   CPYCS CPYCNT @ 0 
+   DO 
+    ( cp2 = clipVertex)
+     DUP @ CP2X ! CELL+ DUP @ CP2Y ! CELL+  ( cpycs+ )
+    ( inputList = outputList)
+     CPOP2IP 
+     0 OPYCNT !
+    ( s = inputPolygon[-1])
+     GETLASTIP
+    ( for subjectVertex in inputList:)
+     IPYCS IPYCNT @ 0 
+     DO
+      ( e = subjectVertex)
+       DUP @ EPX ! CELL+ DUP @ EPY ! CELL+  ( cpycs+ ipycs+ )
+       EPX @ EPY @ PINSIDE 
+       IF SPX @ SPY @ PINSIDE INVERT 
+          IF CINTERSECT APPENDO THEN 
+          EPX @ EPY @ APPENDO
+       ELSE SPX @ SPY @ PINSIDE 
+         IF CINTERSECT APPENDO THEN 
+       THEN 
+      ( s = e)
+       ETOS
+     LOOP DROP  
+    ( cp1 = cp2)
+     CP2TOCP1
+   LOOP DROP O2STACK ;
+
+( Clips against current screen, i.e. rectangular wnd) 
+: PCLIPR  ( x1 y1 x2 y2 ... xn yn n -- xc1 yc1 xc2 yc2 ... xcm ycm m )
+   0 0 SCRW 0 SCRW SCRH 0 SCRH 4 PCLIP ; 
+
+

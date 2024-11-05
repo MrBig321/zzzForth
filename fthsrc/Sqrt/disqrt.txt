@@ -1,0 +1,41 @@
+( Computes the 64bit integer square root of a 64bit positive number, no fraction) 
+( Algorithm-author: Christophe Meessen 1993)
+
+!!!!!NOT READY!!!!!
+
+DECIMAL
+
+: 4DUP ( a b c d -- a b c d a b c d)
+    2>R 2DUP 2R> 2OVER ;
+
+: DISQRT ( ud -- ) ( ud is r)
+  4611686018427387904. 4DUP 2SWAP 
+( r b b r) D> 
+   IF 
+   ( r b) ( R: )
+    BEGIN D2/ D2/ 4DUP D>=   ( !! D2/ D2/ instead of 2 DRSHIFT !!)
+    UNTIL
+   THEN
+( r b )  ( R: )
+   0. 2>R         ( r b)  ( R: q)
+   2DUP D0> 
+   IF    ( while-loop)
+( r b)  ( R: q)
+     BEGIN
+       2DUP 2R@ + ( r b b+q) ( R: q)
+       2R> D2/ ( r b b+q q)     ( !! D2/ instead of DRSHIFT !!)
+       2>R 2>R 2OVER ( r b r) ( R: q b+q)
+       2R@ D>=      ( r b flag) ( R: q b+q)
+       IF 2SWAP 2R> D- ( b r) ( R: q)
+         2OVER 2R> 2SWAP + 2>R ( b r) ( R: q)
+         2SWAP 0. 2>R ( dummy value for b+q)
+       THEN        ( r b ) ( R: q b+q)
+       2R> 2DROP
+       2 DRSHIFT ( r b) ( R: q)
+       2DUP D0= 
+     UNTIL
+   THEN
+   2DROP 2DROP 2R> ;
+
+
+

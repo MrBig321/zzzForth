@@ -1,0 +1,229 @@
+( The code below uses the code in vecmat.txt)
+( Fixed point 3D graphics)
+( Uses isin.txt, ivecmat.txt and graphics.txt)
+
+( We scale by SCALE in ivecmat and isin)
+
+DECIMAL
+
+: ICUBE ;  ( marker for FORGET)
+
+SCALE 2/ 2/ CONSTANT QUATER             ( 0.25)
+SCALE 2/ 2/ NEGATE CONSTANT NQUATER     ( -0.25)
+
+( 8 vertices of CUBE)
+VEC3 V1
+NQUATER 1 V1 ! QUATER 2 V1 ! NQUATER 3 V1 ! 
+VEC3 V2
+QUATER 1 V2 ! QUATER 2 V2 ! NQUATER 3 V2 ! 
+VEC3 V3
+QUATER 1 V3 ! NQUATER 2 V3 ! NQUATER 3 V3 ! 
+VEC3 V4
+NQUATER 1 V4 ! NQUATER 2 V4 ! NQUATER 3 V4 ! 
+VEC3 V5
+NQUATER 1 V5 ! QUATER 2 V5 ! QUATER 3 V5 ! 
+VEC3 V6
+QUATER 1 V6 ! QUATER 2 V6 ! QUATER 3 V6 ! 
+VEC3 V7
+QUATER 1 V7 ! NQUATER 2 V7 ! QUATER 3 V7 ! 
+VEC3 V8
+NQUATER 1 V8 ! NQUATER 2 V8 ! QUATER 3 V8 ! 
+CREATE VERTICES 1 V1 , 1 V2 , 1 V3 , 1 V4 , 1 V5 , 1 V6 , 1 V7 , 1 V8 ,
+8 CONSTANT VERTEXNUM
+4 CONSTANT FACECOORDSCNT
+CREATE FACE1 0 , 1 , 2 , 3 ,             ( face1 of the cube consists of vertices 1, 2, 3, 4)
+CREATE FACE2 1 , 5 , 6 , 2 , 
+CREATE FACE3 5 , 4 , 7 , 6 , 
+CREATE FACE4 4 , 0 , 3 , 7 , 
+CREATE FACE5 0 , 4 , 5 , 1 , 
+CREATE FACE6 3 , 2 , 6 , 7 , 
+CREATE FACES FACE1 , FACE2 , FACE3 , FACE4 , FACE5 , FACE6 , 
+6 CONSTANT FACENUM
+VARIABLE COORDS 2 VERTEXNUM * 1- CELLS ALLOT            ( the transformed [x,y] coords, ints)
+VARIABLE POLYCOORDS 2 FACECOORDSCNT * 1- CELLS ALLOT
+
+VARIABLE CLR         ( color of CUBE)
+
+( Scaling)
+VARIABLE SCALEX VARIABLE SCALEY VARIABLE SCALEZ
+MAT	MSCALE
+
+( Shearing)
+VARIABLE SHEARXYA VARIABLE SHEARXYB VARIABLE SHEARXZA VARIABLE SHEARXZC VARIABLE SHEARYZB VARIABLE SHEARYZC
+MAT	MSHEARXY
+MAT	MSHEARXZ
+MAT	MSHEARYZ
+MAT	MSHEAR
+
+( Rotation)
+VEC3 VROTDEGS
+MAT MROTX
+MAT MROTY
+MAT MROTZ
+MAT MROT
+
+( Translation)
+VEC3 VTRANS
+MAT	MTRANS
+
+: UPDSCALE  ( -- )
+  SCALEX @ 1 1 MSCALE !
+  SCALEY @ 2 2 MSCALE !
+  SCALEZ @ 3 3 MSCALE ! ;
+
+: UPDSHEARXY  ( -- )
+  SHEARXYA @ 1 3 MSHEARXY !
+  SHEARXYB @ 2 3 MSHEARXY ! ;
+
+: UPDSHEARXZ  ( -- )
+  SHEARXZA @ 1 2 MSHEARXZ !
+  SHEARXZC @ 3 2 MSHEARXZ ! ;
+
+: UPDSHEARYZ  ( -- )
+  SHEARYZB @ 2 1 MSHEARYZ !
+  SHEARYZC @ 3 1 MSHEARYZ ! ;
+
+: UPDSHEAR  ( -- )
+  UPDSHEARXY UPDSHEARXZ UPDSHEARYZ
+  1 1 MSHEARXY 1 1 MSHEARXZ MM* 
+  1 1 MRES SCALE MAT/               ( DOWNSCALE)
+  1 1 MSHEAR 1 1 MRES MATCP         ( copy result)
+  1 1 MSHEAR 1 1 MSHEARYZ MM* 
+  1 1 MRES SCALE MAT/               ( DOWNSCALE)
+  1 1 MSHEAR 1 1 MRES MATCP ;       ( copy result)
+
+: UPDROTX  ( -- )
+  1 VROTDEGS @ COS 2 2 MROTX !
+  1 VROTDEGS @ SIN NEGATE 2 3 MROTX !
+  1 VROTDEGS @ SIN 3 2 MROTX !
+  1 VROTDEGS @ COS 3 3 MROTX ! ; 
+
+: UPDROTY  ( -- )
+  2 VROTDEGS @ COS 1 1 MROTY !
+  2 VROTDEGS @ SIN 1 3 MROTY !
+  2 VROTDEGS @ SIN NEGATE 3 1 MROTY !
+  2 VROTDEGS @ COS 3 3 MROTY ! ;
+
+: UPDROTZ  ( -- )
+  3 VROTDEGS @ COS 1 1 MROTZ !
+  3 VROTDEGS @ SIN NEGATE 1 2 MROTZ !
+  3 VROTDEGS @ SIN 2 1 MROTZ !
+  3 VROTDEGS @ COS 2 2 MROTZ ! ;
+
+: UPDROT  ( -- )
+  UPDROTX UPDROTY UPDROTZ
+  1 1 MROTX 1 1 MROTY MM* 
+  1 1 MRES SCALE MAT/             ( DOWNSCALE)
+  1 1 MROT 1 1 MRES MATCP         ( copy result)
+  1 1 MROT 1 1 MROTZ MM* 
+  1 1 MRES SCALE MAT/             ( DOWNSCALE)
+  1 1 MROT 1 1 MRES MATCP ;       ( copy result)
+
+: UPDTRANS  ( -- )
+  1 VTRANS @ 1 4 MTRANS !
+  2 VTRANS @ 2 4 MTRANS !
+  3 VTRANS @ 3 4 MTRANS ! ;
+
+( Projection)
+VARIABLE S
+90 CONSTANT FOV	                   ( FOV should be between 30 and 90)
+100 CONSTANT ZFAR                  ( f [zFar], far clipping plane can be e.g. 100)
+1 CONSTANT ZNEAR                   ( n [zNear], near clipping plane can be e.g. 1)
+1 UPSCALE UPSCALE FOV 2/ TAN / S !
+MAT MPROJ
+S @ 1 1 MPROJ !
+S @ 2 2 MPROJ !
+ZFAR UPSCALE NEGATE ZFAR ZNEAR - / 3 3 MPROJ !
+ZFAR ZNEAR * UPSCALE NEGATE ZFAR ZNEAR - / 3 4 MPROJ !
+SCALE NEGATE 4 3 MPROJ ! 
+
+( If we use the values above, then in reality the matrix needs no scaling:)
+( MAT MPROJ)
+( 1 1 1 MPROJ !)
+( 1 2 2  MPROJ !)
+( -1 3 3  MPROJ !)
+( 1 4 4  MPROJ !)                   ( to get rid of scaling done in ivecmat MATI)
+( -1 4 3  MPROJ !)
+( -1 3 4  MPROJ !)
+ ( However in MV* we scale down, because the other matrices are scaled up, so we should scale up MPROJ too!)
+( 1 1 MPROJ SCALE MAT* )
+ ( MPROJ[3,3] = 1.01 nd MPROJ[3,4]= 1.01, so store SCALE*1.01 [16547.84] in MPROJ:)
+( -16547 3 3 MPROJ !)
+( -16547 3 4 MPROJ !)
+
+( Screen-matrix, ToScreen)
+( common)
+MAT MSCR 
+SCRW 2/ 1 1 MSCR ! 
+SCRH 2/ NEGATE 2 2 MSCR ! 
+SCRW 2/ 1 4 MSCR ! 
+SCRH 2/ 2 4 MSCR ! 
+
+( Either the MSCR ToScreen-matrix or TOSCR should be used)
+( : TOSCR) ( addrv -- )	( result in VECRES)
+(    DUP @ SCALE + SCRW 2/ * SCALE / SCRW 1 - MIN 1 VECRES !  )
+(    CELL+ @ SCALE + 2/ NEGATE SCALE + SCRH * SCALE / SCRH 1- MIN 2 VECRES ! )
+(    1 3 VECRES ! ;)
+
+( common)
+: INIT ( -- )
+ PAGE 3 30 AT-XY S" Press SPACE to Quit" TYPE ; 
+
+VEC3 PVEC	( vector for tmp result)
+MAT MMAT	( scaling*shearing*rotation*translation)
+
+: UPDMAT  ( -- )
+  UPDSCALE UPDSHEAR UPDROT UPDTRANS
+  1 1 MSCALE 1 1 MSHEAR MM*	 
+  1 1 MRES SCALE MAT/           ( DOWNSCALE)
+  1 1 MMAT 1 1 MRES MATCP       ( copy result)
+  1 1 MROT 1 1 MMAT MM*    
+  1 1 MRES SCALE MAT/           ( DOWNSCALE)
+  1 1 MMAT 1 1 MRES MATCP       ( copy result)
+  1 1 MTRANS 1 1 MMAT MM* 
+  1 1 MRES SCALE MAT/           ( DOWNSCALE)
+  1 1 MMAT 1 1 MRES MATCP ;     ( copy result)
+
+: TRANSFORM  ( -- )
+  VERTEXNUM 0 DO 
+  1 1 MMAT VERTICES I CELLS + @ MV*  
+  1 PVEC 1 VECRES VEC3CP 
+  1 1 MPROJ 1 PVEC MV* 
+  1 PVEC 1 VECRES VEC3CP 
+(  1 PVEC TOSCR )               ( If we use TOSCR and not MSCR-matrix)
+  1 1 MSCR 1 PVEC MV*           ( If we use MSCR-matrix and not TOSCR)
+  1 VECRES @ COORDS I 2 * CELLS + DUP >R ! 2 VECRES @ R> CELL+ !
+  LOOP ;
+
+: DRAW ( -- )
+  FACENUM 0 DO FACES I CELLS + @ 
+  FACECOORDSCNT 0 DO DUP I CELLS + 
+  COORDS SWAP @ 2 * CELLS + DUP @ POLYCOORDS I 2 * CELLS + DUP ROT SWAP ! CELL+ SWAP CELL+ @ SWAP ! LOOP DROP 
+  POLYCOORDS FACECOORDSCNT 0 DO DUP @ SWAP CELL+ DUP @ SWAP CELL+ LOOP DROP 
+  CLR @ FACECOORDSCNT POLY LOOP ;  
+
+: CUBE  UPDMAT TRANSFORM DRAW INVSCR ;
+
+: WAITSPACE  BEGIN PAUSE KEY 32 = UNTIL DISCARD ; 
+
+INIT
+
+HEX F800 DECIMAL CLR !	                                                        ( red)
+SCALE SCALEX ! SCALE SCALEY ! SCALE SCALEZ !                                    ( don't scale)
+0 SHEARXYA ! 0 SHEARXYB ! 0 SHEARXZA ! 0 SHEARXZC ! 0 SHEARYZB ! 0 SHEARYZC !   ( no shear)
+30 2 VROTDEGS !                                                                 ( rotate around y-axis)
+-11468 1 VTRANS ! 0 2 VTRANS ! -8192 3 VTRANS !                                 ( shift to the left and down the Z-axis) ( 0.7, 0, -0.5)
+CUBE 
+
+HEX 7E0 DECIMAL CLR !                                                           ( green)
+SCALE 2/ SCALEX ! SCALE SCALEY ! SCALE SCALEZ !                                 ( SCALE means don't scale in that coord)
+0 SHEARXYA ! 0 SHEARXYB ! 0 SHEARXZA ! 0 SHEARXZC ! 0 SHEARYZB ! 0 SHEARYZC !   ( no shear)
+30 1 VROTDEGS ! 0 2 VROTDEGS ! 15 3 VROTDEGS !                                  ( rotate around x-axis and z-axis)
+4915 1 VTRANS ! 0 2 VTRANS ! 0 3 VTRANS !                                       ( shift to the right)    ( 0.3, 0, 0)
+CUBE
+
+WAITSPACE
+
+
+
+

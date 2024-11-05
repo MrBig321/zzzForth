@@ -1,0 +1,48 @@
+ USB
+
+First check if your BIOS supports booting from an USB. Only HDD-emulation has been implemented, so If there is an "Emulate HDD"-setting in BIOS, then that needs to be set.
+Also, set "USB" or "USB HDD" or "Removable Media" to be the first in the BootSequence in BIOS.
+The scripts(build.sh, buildAll.sh) for USB-boot needs to be copied from boot/disk/usbdisk to ZFOS; and the source files (i.e. boot.asm, fat32.asm, loader.asm, mbr.asm in boot/disk/usbdisk) to ZFOS/boot). buildAll2.sh builds everything and copies to our HOME.
+Note that it uses python3.
+We have a pendrive formatted to FAT32.
+Get where the partition begins from the first(i.e. 0th) sector of the pendrive (from the partition-entry). In my case it is 00000800 (hex, i.e 2048 decimal). Next, we will write our boot.bin(Volume Boot Record, VBR) to the beginning of the partition. It's a good idea to save that sector before we overwrite it, and we also have to fill the BIOS Parameter Block (BPB) values from it (boot.asm, fat32.asm) before executing buildAll2.sh. This way we'll be able to use the pendrive normally with Linux or Windows.
+Also set the bootable-flag of the partition-entry, if it is not already set (0x80 means bootable).
+So write boot.bin to the first sector of the partition, and copy LODR.SYS and KRNL.SYS to the pendrive. The first sector(i.e. 0th) of the pendrive is called the "Master Boot Record" (MBR), and the first sector of the partition is called the "Volume Boot Record" (VBR). The MBR loads the VBR.
+
+On Linux:
+Plug in the pendrive.
+First, we unmount the pendrive:
+The mount command tells us where our pendrive was mounted. In my case it is /dev/sdb1.
+Note that /dev/sdb1 means the first partition, and not the whole disk, so with dd we have to use /dev/sdb.
+sudo umount /dev/sdb1
+Next, we have to get to know where the partition begins. We can do it in several ways, for example by saving the first sector of the pendrive:
+sudo dd if=/dev/sdb of=mbrOrig.bin bs=512 count=1
+Then we can either get LBABegin from it with a hex-editor or we can use the script written in python3 (see below):
+python3 ./printpbeg.py mbrOrig.bin
+Here I got 0x00000800 (2048 decimal).
+Next, save the original contents of the first sector of the partition:
+sudo dd if=/dev/sdb skip=2048 of=vbrOrig.bin bs=512 count=1
+In vbrOrig.bin the BIOS Parameter Block(BPB) is from the 3rd byte (zero also counted):
+hexdump -C vbrOrig.bin
+or use the script written in python3 (see below):
+python3 ./printbpb.py vbrOrig.bin
+The BPB in boot.asm and fat32.asm needs to be changed accordingly (your pendrive likely will have different parameters)
+The pendrive is still shown in the window, remove it via right-mouse-click (or simply unplug it).
+All the build-scripts (e.g. buildAll2.sh) need to be executable: "chmod +x ./buildAll2.sh" (do this with all the scripts).
+Execute (in ZFOS-folder):
+./buildAll2.sh
+Plug in the pendrive again.
+Just copy LODR.SYS and KRNL.SYS to the pendrive.
+First, we unmount the pendrive:
+sudo umount /dev/sdb1
+Next, write boot.bin (note that boot.asm already contains the BPB from orig.bin):
+sudo dd if=boot.bin of=/dev/sdb seek=2048
+The bootable-flag can be changed with e.g.:
+sudo fdisk /dev/sdb
+or
+sudo gparted /dev/sdb
+The pendrive is still shown in the window, then remove it via right-mouse-click.
+Plug in the pendrive in a computer and turn the computer on.
+Of course, there is a copy of the vbr (usually at the 6th sector of the partition), so that should also be updated.
+There is an mbr.asm available. In case it still doesn't want to boot, just copy the values of the partition-entry from the original MBR (with bootable flag set!) to mbr.asm, build mbr.asm (there is a script) and then copy mbr.bin to sector 0 of the pendrive.
+
