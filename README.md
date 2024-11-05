@@ -6,7 +6,7 @@ https://www.forth.com/starting-forth/
 
 ## Features
 
-- Resolutions: 1024*768*16 or 640*480*16 (for Eee PC) 
+- Resolutions: 1024x768x16 or 640x480x16 (for Eee PC) 
 - IDE hard disk driver
 - Multitasking (but only one core or CPU is used)
 - USB(EHCI, XHCI) driver (can read/write files from/to pendrive formatted to FAT32) 
