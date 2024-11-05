@@ -52,8 +52,6 @@ Sony(4Gb(2.0), 8GB(2.0), 16GB(2.0), 32Gb(2.1)), Toshiba(8GB, 2.0), Maxell(4Gb, 2
 The Toshiba, the Maxell, the Kingston(8, 16) and the SanDisk pendrives fail in case of resetting EndPoint1 and/or EndPoint2.
 See the function ehci_bulk_reset in ehci.asm. There, at the top of the function, instead of "jz .ResetE1" we have 
 "jz .Back" to avoid resetting EP1 and EP2. All the pendrives work this way, even the ones that didn't fail with resetting the EPs.
-The Sony(32), the Toshiba and the Kingston(16) pendrives work only with "mov WORD [usbfat32_max_clusters_num_per_word], 1" (see above).
-Otherwise there are error messages like "EHCI Inetrrupt wait timed out. Read10: Getting CSW failed."
 
 *************************************
 
