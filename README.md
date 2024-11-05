@@ -27,9 +27,15 @@ In FORTH (in ZFOS/fthsrc/):
 
 See ZFOS/docs for details
 
+## How to build and start
+
 Add executable permission to scripts (in zzzFORTH folder):
 
 chmod +x [star].sh
+
+./buildAll2.sh
+
+See docs/emulators.txt or docs/USBBoot.txt on how to start.
 
 ## License
 
