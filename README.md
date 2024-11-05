@@ -28,6 +28,7 @@ In FORTH (in ZFOS/fthsrc/):
 See ZFOS/docs for details
 
 Add executable permission to scripts (in zzzFORTH folder):
+
 chmod +x [star].sh
 
 ## License
