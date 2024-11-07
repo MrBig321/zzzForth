@@ -772,8 +772,7 @@ usbfat32_read:
 			mov BYTE [usbfat32_name_entries_num], 0
 .CpLFN		call usbfat32_copy_lfn_entry
 			jmp .Inc
-.SFN		mov BYTE [usbfat32_name_entries_num], 0
-			mov al, [esi+USBFAT32_SFN_ATTRIB]
+.SFN			mov al, [esi+USBFAT32_SFN_ATTRIB]
 			and	al, USBFAT32_ATTR_DIRECTORY_MASK			; is it a directory?
 			jnz	.Inc										; we skip directories
 			cmp BYTE [usbfat32_name_entries_num], 0
