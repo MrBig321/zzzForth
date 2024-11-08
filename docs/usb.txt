@@ -109,7 +109,7 @@ HEX
 1000000 USBFSREAD BIGF.TXT" . .         ( size is 0xb5)
 1000000 100 DUMP
 
-1000000 b5 USBFSWRITE TEST.TXT" .
+1000000 b5 USBFSWRITE TEST.TXT" .	( can write SFN-entries only; 8.3 CAPITALS)
 
 ***************************************
 For both EHCI and XHCI:
