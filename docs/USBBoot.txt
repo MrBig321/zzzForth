@@ -1,13 +1,19 @@
  USB
 
-First check if your BIOS supports booting from an USB. Only HDD-emulation has been implemented, so If there is an "Emulate HDD"-setting in BIOS, then that needs to be set.
+First check if your BIOS supports booting from an USB. Only HDD-emulation has been implemented, so If there is an "Emulate HDD"-setting in BIOS, 
+then that needs to be set.
 Also, set "USB" or "USB HDD" or "Removable Media" to be the first in the BootSequence in BIOS.
-The scripts(build.sh, buildAll.sh) for USB-boot needs to be copied from boot/disk/usbdisk to ZFOS; and the source files (i.e. boot.asm, fat32.asm, loader.asm, mbr.asm in boot/disk/usbdisk) to ZFOS/boot). buildAll2.sh builds everything and copies to our HOME.
+The scripts(build.sh, buildAll.sh) for USB-boot needs to be copied from boot/disk/usbdisk to ZFOS; and the source files 
+(i.e. boot.asm, fat32.asm, loader.asm, mbr.asm in boot/disk/usbdisk) to ZFOS/boot). buildAll2.sh builds everything and copies to our HOME.
 Note that it uses python3.
 We have a pendrive formatted to FAT32.
-Get where the partition begins from the first(i.e. 0th) sector of the pendrive (from the partition-entry). In my case it is 00000800 (hex, i.e 2048 decimal). Next, we will write our boot.bin(Volume Boot Record, VBR) to the beginning of the partition. It's a good idea to save that sector before we overwrite it, and we also have to fill the BIOS Parameter Block (BPB) values from it (boot.asm, fat32.asm) before executing buildAll2.sh. This way we'll be able to use the pendrive normally with Linux or Windows.
+Get where the partition begins from the first(i.e. 0th) sector of the pendrive (from the partition-entry). In my case it is 00000800 (hex, i.e 2048 decimal). 
+Next, we will write our boot.bin(Volume Boot Record, VBR) to the beginning of the partition. It's a good idea to save that sector before we overwrite it, 
+and we also have to fill the BIOS Parameter Block (BPB) values from it (boot.asm, fat32.asm) before executing buildAll2.sh. This way we'll be able to use 
+the pendrive normally with Linux or Windows.
 Also set the bootable-flag of the partition-entry, if it is not already set (0x80 means bootable).
-So write boot.bin to the first sector of the partition, and copy LODR.SYS and KRNL.SYS to the pendrive. The first sector(i.e. 0th) of the pendrive is called the "Master Boot Record" (MBR), and the first sector of the partition is called the "Volume Boot Record" (VBR). The MBR loads the VBR.
+So write boot.bin to the first sector of the partition, and copy LODR.SYS and KRNL.SYS to the pendrive. The first sector(i.e. 0th) of the pendrive is called 
+the "Master Boot Record" (MBR), and the first sector of the partition is called the "Volume Boot Record" (VBR). The MBR loads the VBR.
 
 On Linux:
 Plug in the pendrive.
@@ -44,5 +50,6 @@ sudo gparted /dev/sdb
 The pendrive is still shown in the window, then remove it via right-mouse-click.
 Plug in the pendrive in a computer and turn the computer on.
 Of course, there is a copy of the vbr (usually at the 6th sector of the partition), so that should also be updated.
-There is an mbr.asm available. In case it still doesn't want to boot, just copy the values of the partition-entry from the original MBR (with bootable flag set!) to mbr.asm, build mbr.asm (there is a script) and then copy mbr.bin to sector 0 of the pendrive.
+There is an mbr.asm available. In case it still doesn't want to boot, just copy the values of the partition-entry from the original MBR 
+(with bootable flag set!) to mbr.asm, build mbr.asm (there is a script) and then copy mbr.bin to sector 0 of the pendrive.
 
