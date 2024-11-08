@@ -13,8 +13,7 @@ https://www.forth.com/starting-forth/
 - USB(EHCI, XHCI) driver (can read/write files from/to pendrive formatted to FAT32) 
 - HDAUDIO driver (very limited)
 - Can boot from Floppy/HD/USB-MSD
-In FORTH (in ZFOS/fthsrc/):
-- BLOCK
+- BLOCK                            (in FORTH, in ZFOS/fthsrc/; also the ones below)
 - HEXVW, HEXED
 - TXTVW, TXTED
 - SIN, COS, TAN, SQRT (fixed point math)
