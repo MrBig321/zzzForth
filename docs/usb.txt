@@ -20,7 +20,8 @@ This function uses the following SCSI commands:
 -read12 (LBANum: 32bit; SectorsNum: 32bit) [can handle a 2048GB drive; can read 2048GB(!?) at a time]
 -read16 (LBANum: 64bit; SectorsNum: 32bit) [can handle a huge drive; can read 2048GB(!?) at a time]
 
-We use only 16bit sectorsnum in these functions, so if the file(the number of consecutive sectors) is greater than that, we read the file in cycles, maximum 65535 sectors at a time.
+We use only 16bit sectorsnum in these functions, so if the file(the number of consecutive sectors) is greater than that, we read the file in cycles, 
+maximum 65535 sectors at a time.
 65535*512 (max. num in 16bits * sectorsize) is about 32Mb, so the allocated memory in FMM will be enough.
 
 Speed: it takes about 3 seconds to read a 45MB file.
