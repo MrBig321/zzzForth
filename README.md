@@ -22,6 +22,7 @@ In FORTH (in ZFOS/fthsrc/):
 - Sutherland-Cohen line-clipping 
 - Sutherland-Hodgman polygon clipping
 - BEZIERQ, BEZIERC
+- Scrolling of the content of rectangular areas
 - QOI image format (decode/code) supported
 - 3D (fixed point math) (e.g. rotating cubes)
 
