@@ -1,4 +1,5 @@
-Booting from floppy is the active one by default (the files in boot/floppy were copied to ZFOS and ZFOS/boot), so we just need to execute buildAll2.sh in the ZFOS folder:
+Booting from floppy is the active one by default (the files in boot/floppy were copied to ZFOS and ZFOS/boot), so we just need to execute buildAll2.sh 
+in the ZFOS folder:
 	./buildAll2.sh
 Note that it uses python3.
 BOCHS:
@@ -10,7 +11,8 @@ Both USB(EHCI) and USB(XHCI) works with Bochs.
 QEMU:
 It has no configuration file.
 I usually start it like this:
-qemu-system-x86_64 -fda file.img -m 2G -hda qhd.img -drive if=none,id=usbstick,file=pd.img -usb -device usb-ehci,id=ehci -device usb-storage,bus=ehci.0,drive=usbstick -boot menu=on -enable-kvm
+qemu-system-x86_64 -fda file.img -m 2G -hda qhd.img -drive if=none,id=usbstick,file=pd.img -usb -device usb-ehci,id=ehci 
+   -device usb-storage,bus=ehci.0,drive=usbstick -boot menu=on -enable-kvm
 file.img is the output of the floppy-build of ZFOS.
 qhd.img can be created with qemu-img.
 Only USB(EHCI) works with QEMU.
