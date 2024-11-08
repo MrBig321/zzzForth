@@ -6,7 +6,7 @@
 ( Ctrl-m stops [reinits the system, prints welcome message] the main-task.
 Ctrl-c stops the currently running non-main-task. It is useful if a task is in a forever loop and calls PAUSE.
 There is a counter in Pit-irq, which gets cleared in PAUSE. If this counter reaches 10-seconds, then the system will be reinited [jumps to WelcomeMsg]. This is useful if a task is in a forever-loop and doesn't call PAUSE, because no keyboard will be read. If the task is in a forever-loop but calls PAUSE, then it can be stopped by pressing Ctrl-c [or Ctrl-m for the Main-task].
-The Main-task calls PAUSE in the loop it reads the keyboard [_accept function in forth.asm], so we don't need to call PAUSE from the command-line.
+The Main-task calls PAUSE in the loop it reads the keyboard [_accept function in forth/core.asm], so we don't need to call PAUSE from the command-line.
 We only need to call PAUSE in the Main-task if we create a word that for example has a 1000000 DO-LOOP cycle and we want to switch tasks in this loop.
 There is a dummy-task too. If the Main-task is the only task, and it calls SLEEP, then we can switch to the dummy-task.
 
